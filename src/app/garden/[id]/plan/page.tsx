@@ -242,8 +242,7 @@ export default function GardenPlanPage() {
         }
         setLoosePlants(prev => [...prev, newPlant])
       }
-      setPendingPlantId(null)
-      setPendingVarietyId(null)
+      // Keep plant selected for placing more!
       return
     }
 
@@ -272,8 +271,7 @@ export default function GardenPlanPage() {
     setBeds(prev => prev.map(b =>
       b.id === bed.id ? { ...b, plants: [...b.plants, newPlant] } : b
     ))
-    setPendingPlantId(null)
-    setPendingVarietyId(null)
+    // Keep plant selected for placing more!
   }
 
   const startDrag = (ds: DragState) => {
@@ -1128,6 +1126,53 @@ export default function GardenPlanPage() {
                   {pxToFeetInches(selectedShade.width)} × {pxToFeetInches(selectedShade.height)}
                 </div>
                 <button onClick={() => deleteShadeZone(selectedShadeId)} className="text-red-400 hover:text-red-600 text-xs">Delete shade zone</button>
+              </div>
+            )
+          })()}
+
+          {/* Mobile bottom info bar for selected bed plant */}
+          {selectedPlantId && selectedBedId && (() => {
+            const bed = beds.find(b => b.id === selectedBedId)
+            const plant = bed?.plants.find(p => p.id === selectedPlantId)
+            const plantData = plant ? plantMap.get(plant.plantType) : null
+            if (!plantData || !plant) return null
+            const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
+            return (
+              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
+                    <span className="text-2xl">{plantData.emoji}</span>
+                    <div>
+                      <div className="text-sm font-semibold text-garden-dark">{variety ? `${plantData.name} — ${variety.name}` : plantData.name}</div>
+                      <div className="text-xs text-garden-dark/60">{plantData.spacing}&quot; spacing • Tap for info</div>
+                    </div>
+                  </div>
+                  <button onClick={() => deletePlant(selectedBedId!, selectedPlantId!)}
+                    className="bg-red-50 text-red-500 w-10 h-10 rounded-lg flex items-center justify-center">🗑️</button>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Mobile bottom info bar for selected loose plant */}
+          {selectedLoosePlantId && (() => {
+            const plant = loosePlants.find(p => p.id === selectedLoosePlantId)
+            const plantData = plant ? plantMap.get(plant.plantType) : null
+            if (!plantData || !plant) return null
+            const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
+            return (
+              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
+                    <span className="text-2xl">{plantData.emoji}</span>
+                    <div>
+                      <div className="text-sm font-semibold text-garden-dark">{variety ? `${plantData.name} — ${variety.name}` : plantData.name}</div>
+                      <div className="text-xs text-garden-dark/60">{plantData.spacing}&quot; spacing • Tap for info</div>
+                    </div>
+                  </div>
+                  <button onClick={() => deleteLoosePlant(selectedLoosePlantId!)}
+                    className="bg-red-50 text-red-500 w-10 h-10 rounded-lg flex items-center justify-center">🗑️</button>
+                </div>
               </div>
             )
           })()}
