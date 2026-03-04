@@ -324,10 +324,10 @@ export default function GardenPlanPage() {
       } else if (dragState.type === 'bed-resize' && dragState.bedId) {
         setBeds(prev => prev.map(b => {
           if (b.id !== dragState.bedId) return b
-          const newW = snap(Math.max(80, x - b.x))
-          const newH = snap(Math.max(60, y - b.y))
+          const newW = snap(Math.max(20, x - b.x))
+          const newH = snap(Math.max(20, y - b.y))
           if (b.shape === 'circle') {
-            const r = Math.max(60, Math.max(newW, newH))
+            const r = Math.max(20, Math.max(newW, newH))
             return { ...b, width: r, height: r }
           }
           return { ...b, width: newW, height: newH }
@@ -363,7 +363,69 @@ export default function GardenPlanPage() {
       }
     }
 
-    const onUp = () => setDragState(null)
+    const onUp = (e: MouseEvent | TouchEvent) => {
+      // Check if we need to snap plant into/out of a bed
+      if (dragState.type === 'loose-plant-move' && dragState.plantId) {
+        // Loose plant might have been dragged into a bed
+        const plant = loosePlants.find(p => p.id === dragState.plantId)
+        if (plant) {
+          const plantData = plantMap.get(plant.plantType)
+          const sz = plantData ? getPlantSize(plantData.spacing) : 30
+          const cx = plant.x + sz / 2
+          const cy = plant.y + sz / 2
+          const targetBed = beds.find(b =>
+            cx >= b.x && cx <= b.x + b.width &&
+            cy >= b.y && cy <= b.y + b.height
+          )
+          if (targetBed) {
+            // Convert loose plant → bed plant
+            const bedPlant: PlacedPlant = {
+              ...plant,
+              x: snap(plant.x - targetBed.x),
+              y: snap(plant.y - targetBed.y),
+            }
+            setLoosePlants(prev => prev.filter(p => p.id !== plant.id))
+            setBeds(prev => prev.map(b =>
+              b.id === targetBed.id ? { ...b, plants: [...b.plants, bedPlant] } : b
+            ))
+            setSelectedLoosePlantId(null)
+            setSelectedPlantId(plant.id)
+            setSelectedBedId(targetBed.id)
+          }
+        }
+      } else if (dragState.type === 'plant-move' && dragState.plantId && dragState.bedId) {
+        // Bed plant might have been dragged out of its bed
+        const bed = beds.find(b => b.id === dragState.bedId)
+        const plant = bed?.plants.find(p => p.id === dragState.plantId)
+        if (bed && plant) {
+          const plantData = plantMap.get(plant.plantType)
+          const sz = plantData ? getPlantSize(plantData.spacing) : 30
+          // Plant position is relative to bed
+          const absX = bed.x + plant.x
+          const absY = bed.y + plant.y
+          const cx = absX + sz / 2
+          const cy = absY + sz / 2
+          const isInsideBed = cx >= bed.x && cx <= bed.x + bed.width &&
+                              cy >= bed.y && cy <= bed.y + bed.height
+          if (!isInsideBed) {
+            // Convert bed plant → loose plant
+            const loosePlant: PlacedPlant = {
+              ...plant,
+              x: snap(absX),
+              y: snap(absY),
+            }
+            setBeds(prev => prev.map(b =>
+              b.id === bed.id ? { ...b, plants: b.plants.filter(p => p.id !== plant.id) } : b
+            ))
+            setLoosePlants(prev => [...prev, loosePlant])
+            setSelectedPlantId(null)
+            setSelectedLoosePlantId(plant.id)
+            setSelectedBedId(null)
+          }
+        }
+      }
+      setDragState(null)
+    }
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -375,7 +437,7 @@ export default function GardenPlanPage() {
       window.removeEventListener('touchmove', onMove)
       window.removeEventListener('touchend', onUp)
     }
-  }, [dragState, beds])
+  }, [dragState, beds, loosePlants])
 
   const filteredPlants = filterCategory === 'all'
     ? plantCatalog
@@ -636,7 +698,7 @@ export default function GardenPlanPage() {
               return (
                 <div key={plant.id}
                   className={`absolute flex items-center justify-center rounded-full transition-all select-none
-                    ${isSelected ? 'ring-2 ring-garden-dark scale-110 z-20' : 'hover:scale-105 z-[5]'}
+                    ${isSelected ? 'ring-2 ring-garden-dark scale-110 z-30' : 'hover:scale-105 z-20'}
                     bg-white/60 shadow-sm`}
                   style={{
                     left: plant.x, top: plant.y,
