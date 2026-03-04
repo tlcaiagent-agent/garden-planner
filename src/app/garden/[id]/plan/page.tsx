@@ -72,6 +72,7 @@ export default function GardenPlanPage() {
   const [pendingPlantId, setPendingPlantId] = useState<string | null>(null)
   const [pendingVarietyId, setPendingVarietyId] = useState<string | null>(null)
   const [showVarietyPicker, setShowVarietyPicker] = useState(false)
+  const [seedCardPlant, setSeedCardPlant] = useState<{ plantType: string; varietyId?: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLElement>(null)
 
@@ -493,6 +494,10 @@ export default function GardenPlanPage() {
     ? plantCatalog
     : plantCatalog.filter(p => p.category === filterCategory)
 
+  const openSeedCard = (plantType: string, varietyId?: string) => {
+    setSeedCardPlant({ plantType, varietyId: varietyId || undefined })
+  }
+
   // --- Plant inventory helpers ---
   const getAllPlants = () => {
     const allPlants: { plant: PlacedPlant; location: 'bed' | 'loose'; bedName?: string }[] = []
@@ -558,7 +563,8 @@ export default function GardenPlanPage() {
 
           return (
             <div key={plantType} className="bg-garden-cream/30 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 cursor-pointer hover:bg-garden-cream/50 -m-1 p-1 rounded-lg transition-colors"
+                onClick={() => openSeedCard(plantType)}>
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{plantData.emoji}</span>
                   <span className="text-sm font-semibold text-garden-dark">{plantData.name}</span>
@@ -575,34 +581,11 @@ export default function GardenPlanPage() {
                 if (varietyItems.length === 0) return null
                 
                 return (
-                  <div key={varietyId} className="text-xs text-garden-dark/60 ml-6 mb-1">
+                  <div key={varietyId} 
+                    className="text-xs text-garden-dark/60 ml-6 mb-1 cursor-pointer hover:text-garden-green transition-colors"
+                    onClick={() => openSeedCard(plantType, varietyId === 'generic' ? undefined : varietyId)}
+                  >
                     <span className="font-medium">{varietyName}</span> × {varietyItems.length}
-                    {varietyItems.length <= 3 && (
-                      <div className="mt-1 space-y-1">
-                        {varietyItems.map(item => (
-                          <div 
-                            key={item.plant.id} 
-                            className="cursor-pointer hover:text-garden-green transition-colors"
-                            onClick={() => {
-                              if (item.location === 'bed') {
-                                const bed = beds.find(b => b.plants.some(p => p.id === item.plant.id))
-                                if (bed) {
-                                  setSelectedBedId(bed.id)
-                                  setSelectedPlantId(item.plant.id)
-                                  setSelectedLoosePlantId(null)
-                                }
-                              } else {
-                                setSelectedLoosePlantId(item.plant.id)
-                                setSelectedPlantId(null)
-                                setSelectedBedId(null)
-                              }
-                            }}
-                          >
-                            {item.location === 'bed' ? `${item.bedName}` : 'Canvas'}
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -1063,6 +1046,7 @@ export default function GardenPlanPage() {
                   }}
                   onMouseDown={(e) => handleLoosePlantPointerDown(e, plant)}
                   onTouchStart={(e) => handleLoosePlantPointerDown(e, plant)}
+                  onDoubleClick={(e) => { e.stopPropagation(); openSeedCard(plant.plantType, plant.varietyId) }}
                   title={plantData.name}
                 >
                   {plantData.emoji}
@@ -1146,6 +1130,7 @@ export default function GardenPlanPage() {
                         }}
                         onMouseDown={(e) => handlePlantPointerDown(e, plant, bed.id)}
                         onTouchStart={(e) => handlePlantPointerDown(e, plant, bed.id)}
+                        onDoubleClick={(e) => { e.stopPropagation(); openSeedCard(plant.plantType, plant.varietyId) }}
                         title={`${plantData.name} (${plantData.spacing}" spacing)`}
                       >
                         {plantData.emoji}
@@ -1244,6 +1229,123 @@ export default function GardenPlanPage() {
           </div>
         </div>
       )}
+
+      {/* Seed Packet Card Modal */}
+      {seedCardPlant && (() => {
+        const plantData = plantMap.get(seedCardPlant.plantType)
+        if (!plantData) return null
+        const variety = seedCardPlant.varietyId ? plantData.varieties?.find(v => v.id === seedCardPlant.varietyId) : null
+        const displayName = variety ? `${plantData.name} — ${variety.name}` : plantData.name
+        const harvestDays = variety ? variety.daysToHarvest : plantData.daysToHarvest
+
+        const getPlantingTime = () => {
+          if (plantData.seedIndoors && plantData.transplant) {
+            return `Start seeds ${plantData.seedIndoors[0]}–${plantData.seedIndoors[1]} weeks before last frost. Transplant ${Math.abs(plantData.transplant[0])}–${Math.abs(plantData.transplant[1])} weeks ${plantData.transplant[0] < 0 ? 'before' : 'after'} last frost.`
+          } else if (plantData.directSow) {
+            return `Direct sow ${Math.abs(plantData.directSow[0])}–${Math.abs(plantData.directSow[1])} weeks ${plantData.directSow[0] < 0 ? 'before' : 'after'} last frost.`
+          } else if (plantData.transplant) {
+            return `Transplant ${Math.abs(plantData.transplant[0])}–${Math.abs(plantData.transplant[1])} weeks ${plantData.transplant[0] < 0 ? 'before' : 'after'} last frost.`
+          }
+          return 'Check seed packet for timing'
+        }
+
+        return (
+          <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setSeedCardPlant(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-5 py-4 text-white relative" style={{ background: `linear-gradient(135deg, ${plantData.color}CC, ${plantData.color})` }}>
+                <button onClick={() => setSeedCardPlant(null)} className="absolute top-3 right-3 text-white/70 hover:text-white text-xl leading-none">×</button>
+                <div className="text-4xl mb-1">{plantData.emoji}</div>
+                <div className="text-xl font-bold">{displayName}</div>
+                <div className="text-sm text-white/80 capitalize">{plantData.category}</div>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                {variety?.description && (
+                  <p className="text-sm text-garden-dark/70 italic">{variety.description}</p>
+                )}
+
+                {/* Quick stats */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-garden-cream/50 rounded-lg p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold">Spacing</div>
+                    <div className="text-sm font-bold text-garden-dark">{plantData.spacing}&quot;</div>
+                  </div>
+                  <div className="bg-garden-cream/50 rounded-lg p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold">Harvest</div>
+                    <div className="text-sm font-bold text-garden-dark">{harvestDays[0]}–{harvestDays[1]} days</div>
+                  </div>
+                  <div className="bg-garden-cream/50 rounded-lg p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold">Sun</div>
+                    <div className="text-sm font-bold text-garden-dark capitalize">{plantData.sunNeeds}</div>
+                  </div>
+                  <div className="bg-garden-cream/50 rounded-lg p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold">Water</div>
+                    <div className="text-sm font-bold text-garden-dark capitalize">{plantData.waterNeeds}</div>
+                  </div>
+                </div>
+
+                <div className="bg-garden-cream/50 rounded-lg p-2.5">
+                  <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold">Zones</div>
+                  <div className="text-sm font-bold text-garden-dark">{plantData.zones[0]}–{plantData.zones[1]}</div>
+                </div>
+
+                <div className="bg-garden-cream/50 rounded-lg p-2.5">
+                  <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold">When to Plant</div>
+                  <div className="text-sm text-garden-dark">{getPlantingTime()}</div>
+                </div>
+
+                {plantData.companionPlants.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold mb-1">✅ Good Companions</div>
+                    <div className="flex flex-wrap gap-1">
+                      {plantData.companionPlants.map(c => {
+                        const cp = plantMap.get(c)
+                        return cp ? (
+                          <span key={c} className="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs px-2 py-1 rounded-full">
+                            {cp.emoji} {cp.name}
+                          </span>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {plantData.enemyPlants.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold mb-1">❌ Avoid Planting Near</div>
+                    <div className="flex flex-wrap gap-1">
+                      {plantData.enemyPlants.map(c => {
+                        const cp = plantMap.get(c)
+                        return cp ? (
+                          <span key={c} className="inline-flex items-center gap-1 bg-red-50 text-red-600 text-xs px-2 py-1 rounded-full">
+                            {cp.emoji} {cp.name}
+                          </span>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {plantData.varieties && plantData.varieties.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-garden-dark/40 font-semibold mb-1">Available Varieties</div>
+                    <div className="space-y-1">
+                      {plantData.varieties.map(v => (
+                        <div key={v.id} className={`text-xs p-2 rounded-lg ${v.id === seedCardPlant.varietyId ? 'bg-garden-green/10 font-semibold' : 'bg-gray-50'}`}>
+                          <span className="text-garden-dark">{v.name}</span>
+                          <span className="text-garden-dark/50 ml-1">({v.daysToHarvest[0]}–{v.daysToHarvest[1]} days)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Mobile bottom sheet */}
       {bottomSheetOpen && (
