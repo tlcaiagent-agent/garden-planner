@@ -867,55 +867,39 @@ export default function GardenPlanPage() {
             <button className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">🔗 Share</button>
           </div>
 
-          {/* Scale bar */}
-          <div className="absolute bottom-16 left-4 z-10 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-garden-green/10 shadow-sm pointer-events-none">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-0.5 bg-garden-dark"></div>
-              <span className="text-xs text-garden-dark/70 font-mono">1 ft</span>
+          {/* Bottom toolbar: scale + zoom + compass */}
+          <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-auto">
+            {/* Scale + Zoom */}
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 border border-garden-green/10 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <div className="w-8 h-0.5 bg-garden-dark"></div>
+                <span className="text-[10px] text-garden-dark/60 font-mono">1ft</span>
+              </div>
+              <div className="w-px h-4 bg-garden-green/20"></div>
+              <button onClick={zoomOut} className="w-7 h-7 rounded-md hover:bg-garden-cream flex items-center justify-center text-garden-dark text-sm font-bold">−</button>
+              <span className="text-xs font-mono text-garden-dark/70 w-8 text-center">{Math.round(zoom * 100)}%</span>
+              <button onClick={zoomIn} className="w-7 h-7 rounded-md hover:bg-garden-cream flex items-center justify-center text-garden-dark text-sm font-bold">+</button>
             </div>
-          </div>
 
-          {/* Compass widget */}
-          <div className="absolute bottom-16 right-4 z-10 bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-16 h-16 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none pointer-events-auto"
-            onClick={rotateCompass}
-            title={`Garden orientation: North is ${gardenNorthAngle === 0 ? 'up' : `${gardenNorthAngle}° clockwise from up`}`}
-          >
-            <div className="relative w-12 h-12" style={{ transform: `rotate(${-gardenNorthAngle}deg)` }}>
-              {/* Compass face */}
-              <div className="absolute inset-0 rounded-full border border-gray-300">
-                {/* North marker */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 text-xs font-bold text-red-600">N</div>
-                {/* South marker */}
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 text-xs font-semibold text-gray-600">S</div>
-                {/* East marker */}
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 text-xs font-semibold text-gray-600">E</div>
-                {/* West marker */}
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 text-xs font-semibold text-gray-600">W</div>
-                
-                {/* Compass needle */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-5 bg-red-600 origin-bottom"
-                  style={{ transform: 'translateY(-50%)' }}
-                ></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-3 bg-gray-400 origin-top"
-                  style={{ transform: 'translateY(50%) rotate(180deg)' }}
-                ></div>
-                
-                {/* Center dot */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-gray-600 rounded-full"></div>
+            {/* Compass */}
+            <div className="bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-12 h-12 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none"
+              onClick={rotateCompass}
+              title={`North: ${gardenNorthAngle === 0 ? 'up' : `${gardenNorthAngle}°`}`}>
+              <div className="relative w-9 h-9" style={{ transform: `rotate(${-gardenNorthAngle}deg)` }}>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 text-[8px] font-bold text-red-600">N</div>
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[8px] text-gray-400">S</div>
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 text-[8px] text-gray-400">E</div>
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 text-[8px] text-gray-400">W</div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[70%] w-0.5 h-3 bg-red-500 rounded-full"></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-[-30%] w-0.5 h-2 bg-gray-300 rounded-full"></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-gray-500 rounded-full"></div>
               </div>
             </div>
           </div>
 
-          {/* Zoom buttons */}
-          <div className="absolute bottom-16 left-20 z-10 flex gap-1 pointer-events-auto">
-            <button onClick={zoomOut} className="bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-sm font-bold">−</button>
-            <button onClick={zoomReset} className="bg-white/90 backdrop-blur-sm px-2 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-xs font-mono">{Math.round(zoom * 100)}%</button>
-            <button onClick={zoomIn} className="bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-sm font-bold">+</button>
-          </div>
-
           {/* Pending plant bar — bottom of screen */}
           {pendingPlantId && !showVarietyPicker && (
-            <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-auto">
+            <div className="absolute bottom-14 left-0 right-0 z-20 pointer-events-auto">
               <div className="bg-garden-green text-white p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{plantMap.get(pendingPlantId)?.emoji}</span>
@@ -1172,7 +1156,7 @@ export default function GardenPlanPage() {
             if (!plantData || !plant) return null
             const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
             return (
-              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
                     <span className="text-2xl">{plantData.emoji}</span>
@@ -1195,7 +1179,7 @@ export default function GardenPlanPage() {
             if (!plantData || !plant) return null
             const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
             return (
-              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
                     <span className="text-2xl">{plantData.emoji}</span>
@@ -1213,7 +1197,7 @@ export default function GardenPlanPage() {
 
           {/* Mobile bottom info bar for beds */}
           {selectedBedId && !selectedPlantId && selectedBed && (
-            <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+            <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold text-garden-dark">{selectedBed.name}</div>
@@ -1236,7 +1220,7 @@ export default function GardenPlanPage() {
             const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
             if (!selectedShade) return null
             return (
-              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-semibold text-garden-dark flex items-center gap-2">
