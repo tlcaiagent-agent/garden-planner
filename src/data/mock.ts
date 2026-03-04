@@ -126,7 +126,74 @@ export const mockConversations: AIConversation[] = [
   },
 ]
 
+export type LogCategory = 'planted' | 'watered' | 'fertilized' | 'harvested' | 'note'
+
+export interface GardenLogEntry {
+  id: string
+  gardenId: string
+  date: string // ISO date string
+  category: LogCategory
+  plantType?: string // optional reference to plant id
+  note: string
+  createdAt: string
+}
+
+export const mockGardenLog: GardenLogEntry[] = [
+  {
+    id: 'log-1',
+    gardenId: 'garden-1',
+    date: '2026-02-15',
+    category: 'note',
+    note: 'Ordered seeds for the spring season. Got tomato, pepper, and basil varieties.',
+    createdAt: '2026-02-15T10:00:00Z',
+  },
+  {
+    id: 'log-2',
+    gardenId: 'garden-1',
+    date: '2026-02-20',
+    category: 'planted',
+    plantType: 'tomato',
+    note: 'Started Cherokee Purple tomato seeds indoors under grow lights.',
+    createdAt: '2026-02-20T09:30:00Z',
+  },
+  {
+    id: 'log-3',
+    gardenId: 'garden-1',
+    date: '2026-02-20',
+    category: 'planted',
+    plantType: 'pepper',
+    note: 'Started bell pepper seeds indoors. Using heat mat for germination.',
+    createdAt: '2026-02-20T09:45:00Z',
+  },
+  {
+    id: 'log-4',
+    gardenId: 'garden-1',
+    date: '2026-02-28',
+    category: 'note',
+    note: 'Tomato seedlings sprouted! About 1 inch tall.',
+    createdAt: '2026-02-28T08:00:00Z',
+  },
+  {
+    id: 'log-5',
+    gardenId: 'garden-1',
+    date: '2026-03-01',
+    category: 'watered',
+    plantType: 'tomato',
+    note: 'Watered seedlings. Soil was getting dry under grow lights.',
+    createdAt: '2026-03-01T07:30:00Z',
+  },
+  {
+    id: 'log-6',
+    gardenId: 'garden-1',
+    date: '2026-03-03',
+    category: 'fertilized',
+    plantType: 'tomato',
+    note: 'First light fertilizer application — quarter strength fish emulsion.',
+    createdAt: '2026-03-03T10:00:00Z',
+  },
+]
+
 export const userProfile = {
-  zone: '7b',
+  zone: '8b',
   location: 'Portland, OR',
 }
