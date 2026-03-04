@@ -40,7 +40,8 @@ const pxToFeetInches = (px: number) => {
   return `${feet}'${rem}"`
 }
 
-const getPlantSize = (spacing: number) => Math.max(20, Math.min(80, spacing * 1.5))
+// Scale: 40px = 12 inches (1ft). Plant diameter = spacing in inches converted to px.
+const getPlantSize = (spacing: number) => Math.max(20, Math.min(120, spacing * (40 / 12)))
 
 type BedShape = 'rectangle' | 'l-shape' | 'circle' | 'raised' | 'pot'
 
