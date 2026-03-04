@@ -9,6 +9,28 @@ import Link from 'next/link'
 const GRID_SIZE = 20
 const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE
 
+// Rotate a point around a center by -angle (to get local coords of a rotated bed)
+const rotatePoint = (px: number, py: number, cx: number, cy: number, angleDeg: number) => {
+  const rad = (-angleDeg * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const dx = px - cx
+  const dy = py - cy
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos }
+}
+
+// Check if a canvas point is inside a (possibly rotated) bed, returns local bed coords if inside
+const pointInBed = (px: number, py: number, bed: GardenBed): { inside: boolean; localX: number; localY: number } => {
+  const cx = bed.x + bed.width / 2
+  const cy = bed.y + bed.height / 2
+  const rot = bed.rotation || 0
+  // Rotate the point into the bed's local (unrotated) space
+  const local = rot ? rotatePoint(px, py, cx, cy, rot) : { x: px, y: py }
+  const inside = local.x >= bed.x && local.x <= bed.x + bed.width &&
+                 local.y >= bed.y && local.y <= bed.y + bed.height
+  return { inside, localX: local.x - bed.x, localY: local.y - bed.y }
+}
+
 const pxToFeetInches = (px: number) => {
   const inches = (px / 20) * 6
   const feet = Math.floor(inches / 12)
@@ -144,21 +166,23 @@ export default function GardenPlanPage() {
       const plantData = plantMap.get(pendingPlantId)
       const sz = plantData ? getPlantSize(plantData.spacing) : 30
 
-      // Check if inside a bed first
-      const targetBed = beds.find(b =>
-        x >= b.x && x <= b.x + b.width &&
-        y >= b.y && y <= b.y + b.height
-      )
+      // Check if inside a bed first (rotation-aware)
+      let targetBed: GardenBed | undefined
+      let localHit = { localX: 0, localY: 0 }
+      for (const b of beds) {
+        const hit = pointInBed(x, y, b)
+        if (hit.inside) { targetBed = b; localHit = hit; break }
+      }
 
       if (targetBed) {
         const newPlant: PlacedPlant = {
           id: `plant-${Date.now()}`,
           plantType: pendingPlantId,
-          x: snap(x - targetBed.x - sz / 2),
-          y: snap(y - targetBed.y - sz / 2),
+          x: snap(localHit.localX - sz / 2),
+          y: snap(localHit.localY - sz / 2),
         }
         setBeds(prev => prev.map(b =>
-          b.id === targetBed.id ? { ...b, plants: [...b.plants, newPlant] } : b
+          b.id === targetBed!.id ? { ...b, plants: [...b.plants, newPlant] } : b
         ))
       } else {
         // Place as loose plant on canvas
@@ -186,11 +210,12 @@ export default function GardenPlanPage() {
     const { x, y } = canvasXY(e.clientX, e.clientY)
     const plantData = plantMap.get(pendingPlantId)
     const sz = plantData ? getPlantSize(plantData.spacing) : 30
+    const hit = pointInBed(x, y, bed)
     const newPlant: PlacedPlant = {
       id: `plant-${Date.now()}`,
       plantType: pendingPlantId,
-      x: snap(x - bed.x - sz / 2),
-      y: snap(y - bed.y - sz / 2),
+      x: snap(hit.localX - sz / 2),
+      y: snap(hit.localY - sz / 2),
     }
     setBeds(prev => prev.map(b =>
       b.id === bed.id ? { ...b, plants: [...b.plants, newPlant] } : b
@@ -277,21 +302,23 @@ export default function GardenPlanPage() {
     const plantData = plantMap.get(plantId)
     const sz = plantData ? getPlantSize(plantData.spacing) : 30
 
-    // Check if inside a bed
-    const targetBed = beds.find(b =>
-      dropX >= b.x && dropX <= b.x + b.width &&
-      dropY >= b.y && dropY <= b.y + b.height
-    )
+    // Check if inside a bed (rotation-aware)
+    let targetBed: GardenBed | undefined
+    let localHit = { localX: 0, localY: 0 }
+    for (const b of beds) {
+      const hit = pointInBed(dropX, dropY, b)
+      if (hit.inside) { targetBed = b; localHit = hit; break }
+    }
 
     if (targetBed) {
       const newPlant: PlacedPlant = {
         id: `plant-${Date.now()}`,
         plantType: plantId,
-        x: snap(dropX - targetBed.x - sz / 2),
-        y: snap(dropY - targetBed.y - sz / 2),
+        x: snap(localHit.localX - sz / 2),
+        y: snap(localHit.localY - sz / 2),
       }
       setBeds(prev => prev.map(b =>
-        b.id === targetBed.id ? { ...b, plants: [...b.plants, newPlant] } : b
+        b.id === targetBed!.id ? { ...b, plants: [...b.plants, newPlant] } : b
       ))
     } else {
       // Drop as loose plant
@@ -373,16 +400,19 @@ export default function GardenPlanPage() {
           const sz = plantData ? getPlantSize(plantData.spacing) : 30
           const cx = plant.x + sz / 2
           const cy = plant.y + sz / 2
-          const targetBed = beds.find(b =>
-            cx >= b.x && cx <= b.x + b.width &&
-            cy >= b.y && cy <= b.y + b.height
-          )
+          // Rotation-aware hit test
+          let targetBed: GardenBed | undefined
+          let localHit = { localX: 0, localY: 0 }
+          for (const b of beds) {
+            const hit = pointInBed(cx, cy, b)
+            if (hit.inside) { targetBed = b; localHit = hit; break }
+          }
           if (targetBed) {
-            // Convert loose plant → bed plant
+            // Convert loose plant → bed plant (use local coords)
             const bedPlant: PlacedPlant = {
               ...plant,
-              x: snap(plant.x - targetBed.x),
-              y: snap(plant.y - targetBed.y),
+              x: snap(localHit.localX - sz / 2),
+              y: snap(localHit.localY - sz / 2),
             }
             setLoosePlants(prev => prev.filter(p => p.id !== plant.id))
             setBeds(prev => prev.map(b =>
@@ -400,19 +430,30 @@ export default function GardenPlanPage() {
         if (bed && plant) {
           const plantData = plantMap.get(plant.plantType)
           const sz = plantData ? getPlantSize(plantData.spacing) : 30
-          // Plant position is relative to bed
-          const absX = bed.x + plant.x
-          const absY = bed.y + plant.y
-          const cx = absX + sz / 2
-          const cy = absY + sz / 2
-          const isInsideBed = cx >= bed.x && cx <= bed.x + bed.width &&
-                              cy >= bed.y && cy <= bed.y + bed.height
+          // Plant position is relative to bed (local coords)
+          // Check if local center is still within bed bounds
+          const localCx = plant.x + sz / 2
+          const localCy = plant.y + sz / 2
+          const isInsideBed = localCx >= 0 && localCx <= bed.width &&
+                              localCy >= 0 && localCy <= bed.height
           if (!isInsideBed) {
-            // Convert bed plant → loose plant
+            // Convert bed plant → loose plant (transform local back to canvas coords)
+            const rot = bed.rotation || 0
+            const bedCx = bed.x + bed.width / 2
+            const bedCy = bed.y + bed.height / 2
+            // Local offset from bed center
+            const lx = (bed.x + plant.x) - bedCx
+            const ly = (bed.y + plant.y) - bedCy
+            // Rotate back to canvas space
+            const rad = (rot * Math.PI) / 180
+            const cos = Math.cos(rad)
+            const sin = Math.sin(rad)
+            const canvasX = bedCx + lx * cos - ly * sin
+            const canvasY = bedCy + lx * sin + ly * cos
             const loosePlant: PlacedPlant = {
               ...plant,
-              x: snap(absX),
-              y: snap(absY),
+              x: snap(canvasX),
+              y: snap(canvasY),
             }
             setBeds(prev => prev.map(b =>
               b.id === bed.id ? { ...b, plants: b.plants.filter(p => p.id !== plant.id) } : b
