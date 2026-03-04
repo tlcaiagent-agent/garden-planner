@@ -12,7 +12,7 @@ export interface Garden {
 export interface GardenBed {
   id: string
   name: string
-  shape: 'rectangle' | 'l-shape' | 'circle' | 'raised'
+  shape: 'rectangle' | 'l-shape' | 'circle' | 'raised' | 'pot'
   x: number
   y: number
   width: number
@@ -26,6 +26,7 @@ export interface PlacedPlant {
   plantType: string
   x: number
   y: number
+  varietyId?: string
   plantedDate?: string
   notes?: string
 }

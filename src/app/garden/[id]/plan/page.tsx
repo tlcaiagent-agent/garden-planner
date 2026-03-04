@@ -42,7 +42,7 @@ const pxToFeetInches = (px: number) => {
 
 const getPlantSize = (spacing: number) => Math.max(20, Math.min(80, spacing * 1.5))
 
-type BedShape = 'rectangle' | 'l-shape' | 'circle' | 'raised'
+type BedShape = 'rectangle' | 'l-shape' | 'circle' | 'raised' | 'pot'
 
 interface DragState {
   type: 'plant-move' | 'loose-plant-move' | 'bed-move' | 'bed-resize' | 'bed-rotate'
@@ -66,10 +66,12 @@ export default function GardenPlanPage() {
   const [selectedLoosePlantId, setSelectedLoosePlantId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const [showCompanion, setShowCompanion] = useState(true)
-  const [sidebarTab, setSidebarTab] = useState<'plants' | 'beds'>('plants')
+  const [sidebarTab, setSidebarTab] = useState<'plants' | 'beds' | 'list'>('plants')
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [bottomSheetOpen, setBottomSheetOpen] = useState(false)
   const [pendingPlantId, setPendingPlantId] = useState<string | null>(null)
+  const [pendingVarietyId, setPendingVarietyId] = useState<string | null>(null)
+  const [showVarietyPicker, setShowVarietyPicker] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLElement>(null)
 
@@ -121,8 +123,8 @@ export default function GardenPlanPage() {
       shape,
       x: snap(scrollX + 100),
       y: snap(scrollY + 100),
-      width: shape === 'circle' ? 160 : 260,
-      height: shape === 'circle' ? 160 : 160,
+      width: shape === 'circle' || shape === 'pot' ? (shape === 'pot' ? 40 : 160) : 260,
+      height: shape === 'circle' || shape === 'pot' ? (shape === 'pot' ? 40 : 160) : 160,
       rotation: 0,
       plants: [],
     }
@@ -180,6 +182,7 @@ export default function GardenPlanPage() {
           plantType: pendingPlantId,
           x: snap(localHit.localX - sz / 2),
           y: snap(localHit.localY - sz / 2),
+          varietyId: pendingVarietyId || undefined,
         }
         setBeds(prev => prev.map(b =>
           b.id === targetBed!.id ? { ...b, plants: [...b.plants, newPlant] } : b
@@ -191,9 +194,12 @@ export default function GardenPlanPage() {
           plantType: pendingPlantId,
           x: snap(x - sz / 2),
           y: snap(y - sz / 2),
+          varietyId: pendingVarietyId || undefined,
         }
         setLoosePlants(prev => [...prev, newPlant])
       }
+      setPendingPlantId(null)
+      setPendingVarietyId(null)
       return
     }
 
@@ -216,10 +222,13 @@ export default function GardenPlanPage() {
       plantType: pendingPlantId,
       x: snap(hit.localX - sz / 2),
       y: snap(hit.localY - sz / 2),
+      varietyId: pendingVarietyId || undefined,
     }
     setBeds(prev => prev.map(b =>
       b.id === bed.id ? { ...b, plants: [...b.plants, newPlant] } : b
     ))
+    setPendingPlantId(null)
+    setPendingVarietyId(null)
   }
 
   const startDrag = (ds: DragState) => {
@@ -353,7 +362,7 @@ export default function GardenPlanPage() {
           if (b.id !== dragState.bedId) return b
           const newW = snap(Math.max(20, x - b.x))
           const newH = snap(Math.max(20, y - b.y))
-          if (b.shape === 'circle') {
+          if (b.shape === 'circle' || b.shape === 'pot') {
             const r = Math.max(20, Math.max(newW, newH))
             return { ...b, width: r, height: r }
           }
@@ -484,6 +493,126 @@ export default function GardenPlanPage() {
     ? plantCatalog
     : plantCatalog.filter(p => p.category === filterCategory)
 
+  // --- Plant inventory helpers ---
+  const getAllPlants = () => {
+    const allPlants: { plant: PlacedPlant; location: 'bed' | 'loose'; bedName?: string }[] = []
+    
+    // Add bed plants
+    beds.forEach(bed => {
+      bed.plants.forEach(plant => {
+        allPlants.push({ plant, location: 'bed', bedName: bed.name })
+      })
+    })
+    
+    // Add loose plants
+    loosePlants.forEach(plant => {
+      allPlants.push({ plant, location: 'loose' })
+    })
+    
+    return allPlants
+  }
+
+  const groupPlantsByType = () => {
+    const allPlants = getAllPlants()
+    const grouped: { [plantType: string]: { plant: PlacedPlant; location: 'bed' | 'loose'; bedName?: string }[] } = {}
+    
+    allPlants.forEach(item => {
+      if (!grouped[item.plant.plantType]) {
+        grouped[item.plant.plantType] = []
+      }
+      grouped[item.plant.plantType].push(item)
+    })
+    
+    return grouped
+  }
+
+  const renderPlantList = () => {
+    const groupedPlants = groupPlantsByType()
+    const plantTypes = Object.keys(groupedPlants)
+
+    if (plantTypes.length === 0) {
+      return (
+        <div className="text-center py-8 text-garden-dark/50">
+          <div className="text-4xl mb-2">📋</div>
+          <p className="text-sm">No plants yet</p>
+          <p className="text-xs mt-1">Add some plants to see your inventory</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-garden-dark">Plant Inventory</h3>
+        {plantTypes.map(plantType => {
+          const plantData = plantMap.get(plantType)
+          const items = groupedPlants[plantType]
+          if (!plantData) return null
+
+          // Group by variety
+          const byVariety: { [varietyId: string]: typeof items } = { 'generic': [] }
+          items.forEach(item => {
+            const varId = item.plant.varietyId || 'generic'
+            if (!byVariety[varId]) byVariety[varId] = []
+            byVariety[varId].push(item)
+          })
+
+          return (
+            <div key={plantType} className="bg-garden-cream/30 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{plantData.emoji}</span>
+                  <span className="text-sm font-semibold text-garden-dark">{plantData.name}</span>
+                </div>
+                <span className="text-xs bg-garden-green/10 px-2 py-1 rounded-full text-garden-dark/70">
+                  × {items.length}
+                </span>
+              </div>
+              
+              {Object.entries(byVariety).map(([varietyId, varietyItems]) => {
+                const variety = plantData.varieties?.find(v => v.id === varietyId)
+                const varietyName = variety ? variety.name : 'Generic'
+                
+                if (varietyItems.length === 0) return null
+                
+                return (
+                  <div key={varietyId} className="text-xs text-garden-dark/60 ml-6 mb-1">
+                    <span className="font-medium">{varietyName}</span> × {varietyItems.length}
+                    {varietyItems.length <= 3 && (
+                      <div className="mt-1 space-y-1">
+                        {varietyItems.map(item => (
+                          <div 
+                            key={item.plant.id} 
+                            className="cursor-pointer hover:text-garden-green transition-colors"
+                            onClick={() => {
+                              if (item.location === 'bed') {
+                                const bed = beds.find(b => b.plants.some(p => p.id === item.plant.id))
+                                if (bed) {
+                                  setSelectedBedId(bed.id)
+                                  setSelectedPlantId(item.plant.id)
+                                  setSelectedLoosePlantId(null)
+                                }
+                              } else {
+                                setSelectedLoosePlantId(item.plant.id)
+                                setSelectedPlantId(null)
+                                setSelectedBedId(null)
+                              }
+                            }}
+                          >
+                            {item.location === 'bed' ? `${item.bedName}` : 'Canvas'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   // --- Shared UI pieces ---
   const renderPlantPalette = (isMobile: boolean) => (
     <div className="space-y-3">
@@ -496,10 +625,16 @@ export default function GardenPlanPage() {
         ))}
       </div>
 
-      {pendingPlantId && (
+      {pendingPlantId && !showVarietyPicker && (
         <div className="bg-garden-green/10 border border-garden-green rounded-xl p-2 text-sm text-garden-dark flex items-center justify-between">
-          <span>🌱 <b>{plantMap.get(pendingPlantId)?.name}</b> — tap anywhere to place</span>
-          <button onClick={() => setPendingPlantId(null)} className="text-red-400 hover:text-red-600 px-2">✕</button>
+          <span>
+            🌱 <b>{plantMap.get(pendingPlantId)?.name}</b>
+            {pendingVarietyId && (() => {
+              const variety = plantMap.get(pendingPlantId)?.varieties?.find(v => v.id === pendingVarietyId)
+              return variety ? ` (${variety.name})` : ''
+            })()} — tap anywhere to place
+          </span>
+          <button onClick={() => { setPendingPlantId(null); setPendingVarietyId(null) }} className="text-red-400 hover:text-red-600 px-2">✕</button>
         </div>
       )}
 
@@ -508,11 +643,27 @@ export default function GardenPlanPage() {
           <div key={plant.id}
             draggable={!isMobile}
             onDragStart={!isMobile ? (e) => handlePaletteDragStart(e, plant) : undefined}
-            onClick={() => { setPendingPlantId(plant.id); if (isMobile) setBottomSheetOpen(false) }}
+            onClick={() => { 
+              if (plant.varieties && plant.varieties.length > 0) {
+                setPendingPlantId(plant.id);
+                setShowVarietyPicker(true);
+              } else {
+                setPendingPlantId(plant.id);
+                setPendingVarietyId(null);
+                if (isMobile) setBottomSheetOpen(false);
+              }
+            }}
             className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors group touch-manipulation ${pendingPlantId === plant.id ? 'bg-garden-green/10 ring-1 ring-garden-green' : 'hover:bg-garden-cream/50'}`}>
             <span className="text-2xl">{plant.emoji}</span>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-garden-dark truncate">{plant.name}</div>
+              <div className="text-sm font-semibold text-garden-dark truncate flex items-center gap-1">
+                {plant.name}
+                {plant.varieties && plant.varieties.length > 0 && (
+                  <span className="text-xs bg-garden-green/20 text-garden-green px-1.5 py-0.5 rounded-full">
+                    {plant.varieties.length} varieties
+                  </span>
+                )}
+              </div>
               <div className="text-xs text-garden-dark/40">{plant.spacing}&quot; spacing • {plant.sunNeeds} sun</div>
             </div>
           </div>
@@ -529,6 +680,7 @@ export default function GardenPlanPage() {
           { shape: 'rectangle' as BedShape, emoji: '▭', name: 'Rectangle' },
           { shape: 'raised' as BedShape, emoji: '📦', name: 'Raised Bed' },
           { shape: 'circle' as BedShape, emoji: '⬭', name: 'Circle' },
+          { shape: 'pot' as BedShape, emoji: '🪴', name: 'Pot' },
           { shape: 'l-shape' as BedShape, emoji: '⌐', name: 'L-Shape' },
         ]).map(b => (
           <button key={b.shape} onClick={() => addBed(b.shape)}
@@ -580,9 +732,12 @@ export default function GardenPlanPage() {
             <button onClick={() => setSidebarTab('beds')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${sidebarTab === 'beds' ? 'text-garden-green border-b-2 border-garden-green' : 'text-garden-dark/50'}`}>
               📐 Beds
             </button>
+            <button onClick={() => setSidebarTab('list')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${sidebarTab === 'list' ? 'text-garden-green border-b-2 border-garden-green' : 'text-garden-dark/50'}`}>
+              📋 List
+            </button>
           </div>
           <div className="flex-1 overflow-auto p-3">
-            {sidebarTab === 'plants' ? renderPlantPalette(false) : renderBedPalette()}
+            {sidebarTab === 'plants' ? renderPlantPalette(false) : sidebarTab === 'beds' ? renderBedPalette() : renderPlantList()}
           </div>
           <div className="p-3 border-t border-garden-green/10">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -604,6 +759,10 @@ export default function GardenPlanPage() {
             <button onClick={() => { setSidebarTab('beds'); setBottomSheetOpen(true) }}
               className="bg-white/90 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-md border border-garden-green/10 min-h-[44px]">
               📐 Beds
+            </button>
+            <button onClick={() => { setSidebarTab('list'); setBottomSheetOpen(true) }}
+              className="bg-white/90 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-md border border-garden-green/10 min-h-[44px]">
+              📋 List
             </button>
             <Link href={`/garden/${gardenId}/calendar`}
               className="bg-white/90 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-md border border-garden-green/10 min-h-[44px] flex items-center">
@@ -627,52 +786,206 @@ export default function GardenPlanPage() {
           </div>
 
           {/* Pending plant banner */}
-          {pendingPlantId && (
+          {pendingPlantId && !showVarietyPicker && (
             <div className="absolute top-16 md:top-4 left-1/2 -translate-x-1/2 z-20 bg-garden-green text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
-              <span>{plantMap.get(pendingPlantId)?.emoji} Tap anywhere to place {plantMap.get(pendingPlantId)?.name}</span>
-              <button onClick={() => setPendingPlantId(null)} className="ml-1 hover:text-red-200 text-lg leading-none">×</button>
+              <span>
+                {plantMap.get(pendingPlantId)?.emoji} Tap anywhere to place {plantMap.get(pendingPlantId)?.name}
+                {pendingVarietyId && (() => {
+                  const variety = plantMap.get(pendingPlantId)?.varieties?.find(v => v.id === pendingVarietyId)
+                  return variety ? ` (${variety.name})` : ''
+                })()}
+              </span>
+              <button onClick={() => { setPendingPlantId(null); setPendingVarietyId(null) }} className="ml-1 hover:text-red-200 text-lg leading-none">×</button>
             </div>
           )}
 
-          {/* Desktop info panels */}
+          {/* Desktop seed packet info card */}
           {selectedPlantId && selectedBedId && (() => {
             const bed = beds.find(b => b.id === selectedBedId)
             const plant = bed?.plants.find(p => p.id === selectedPlantId)
             const plantData = plant ? plantMap.get(plant.plantType) : null
             if (!plantData || !plant) return null
             const { companions, enemies } = getCompanionStatus(plant.plantType, selectedBedId)
+            const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
+            const displayName = variety ? `${plantData.name} - ${variety.name}` : plantData.name
+            const harvestDays = variety ? variety.daysToHarvest : plantData.daysToHarvest
+            
+            const getPlantingTime = () => {
+              if (plantData.seedIndoors && plantData.transplant) {
+                return `Start seeds ${plantData.seedIndoors[0]}-${plantData.seedIndoors[1]} weeks before last frost, transplant ${Math.abs(plantData.transplant[0])}-${Math.abs(plantData.transplant[1])} weeks ${plantData.transplant[0] < 0 ? 'before' : 'after'} last frost`
+              } else if (plantData.directSow) {
+                return `Direct sow ${Math.abs(plantData.directSow[0])}-${Math.abs(plantData.directSow[1])} weeks ${plantData.directSow[0] < 0 ? 'before' : 'after'} last frost`
+              } else if (plantData.transplant) {
+                return `Transplant ${Math.abs(plantData.transplant[0])}-${Math.abs(plantData.transplant[1])} weeks ${plantData.transplant[0] < 0 ? 'before' : 'after'} last frost`
+              }
+              return 'Check seed packet for timing'
+            }
+
             return (
-              <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">{plantData.emoji}</span>
-                  <h3 className="font-display text-lg text-garden-dark">{plantData.name}</h3>
+              <div className="hidden md:block absolute top-4 right-4 z-10 w-80 shadow-xl border-2 border-garden-green/20 overflow-hidden rounded-2xl bg-white">
+                {/* Seed packet header */}
+                <div 
+                  className="px-4 py-3 text-white relative"
+                  style={{ 
+                    background: variety?.color || plantData.color,
+                    backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%)'
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl drop-shadow-sm">{plantData.emoji}</span>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-lg leading-tight drop-shadow-sm">{displayName}</h3>
+                      <div className="text-sm opacity-90 font-medium">Premium Garden Seeds</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs space-y-1 text-garden-dark/60">
-                  <p>Spacing: {plantData.spacing}&quot; • {plantData.sunNeeds} sun • {plantData.waterNeeds} water</p>
-                  <p>Harvest: {plantData.daysToHarvest[0]}-{plantData.daysToHarvest[1]} days</p>
+
+                {/* Seed packet body */}
+                <div className="p-4 bg-gradient-to-b from-garden-cream/20 to-white">
+                  {variety && (
+                    <div className="mb-3 p-2 bg-garden-green/5 rounded-lg border border-garden-green/10">
+                      <div className="text-sm font-semibold text-garden-dark mb-1">{variety.name}</div>
+                      <div className="text-xs text-garden-dark/70">{variety.description}</div>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                    <div>
+                      <div className="font-bold text-garden-dark">📏 Spacing</div>
+                      <div className="text-garden-dark/70">{plantData.spacing} inches</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-garden-dark">☀️ Sun</div>
+                      <div className="text-garden-dark/70 capitalize">{plantData.sunNeeds}</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-garden-dark">💧 Water</div>
+                      <div className="text-garden-dark/70 capitalize">{plantData.waterNeeds}</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-garden-dark">⏰ Harvest</div>
+                      <div className="text-garden-dark/70">{harvestDays[0]}-{harvestDays[1]} days</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-garden-dark">🌡️ Zones</div>
+                      <div className="text-garden-dark/70">{plantData.zones[0]}-{plantData.zones[1]}</div>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="font-bold text-garden-dark text-xs mb-1">🌱 When to Plant</div>
+                    <div className="text-xs text-garden-dark/70 leading-relaxed">{getPlantingTime()}</div>
+                  </div>
+
+                  {showCompanion && companions.length > 0 && (
+                    <div className="mb-2">
+                      <div className="font-bold text-green-600 text-xs mb-1">✓ Companion Plants</div>
+                      <div className="text-xs text-garden-dark/70">
+                        {companions.map(c => `${plantMap.get(c)?.emoji} ${plantMap.get(c)?.name}`).join(' • ')}
+                      </div>
+                    </div>
+                  )}
+
+                  {showCompanion && enemies.length > 0 && (
+                    <div className="mb-3">
+                      <div className="font-bold text-red-500 text-xs mb-1">✗ Avoid Planting Near</div>
+                      <div className="text-xs text-garden-dark/70">
+                        {enemies.map(c => `${plantMap.get(c)?.emoji} ${plantMap.get(c)?.name}`).join(' • ')}
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={() => deletePlant(selectedBedId!, selectedPlantId!)} className="w-full text-red-500 hover:text-red-700 text-xs font-semibold py-2 px-3 rounded-lg border border-red-200 hover:bg-red-50 transition-colors">
+                    Remove Plant
+                  </button>
                 </div>
-                {showCompanion && companions.length > 0 && (
-                  <div className="mt-2 text-xs"><span className="text-green-600 font-semibold">✓ </span>{companions.map(c => plantMap.get(c)?.emoji + ' ' + plantMap.get(c)?.name).join(', ')}</div>
-                )}
-                {showCompanion && enemies.length > 0 && (
-                  <div className="mt-1 text-xs"><span className="text-red-500 font-semibold">✗ </span>{enemies.map(c => plantMap.get(c)?.emoji + ' ' + plantMap.get(c)?.name).join(', ')}</div>
-                )}
-                <button onClick={() => deletePlant(selectedBedId!, selectedPlantId!)} className="mt-3 text-red-400 hover:text-red-600 text-xs">Remove</button>
               </div>
             )
           })()}
 
-          {/* Loose plant info */}
+          {/* Loose plant seed packet info */}
           {selectedLoosePlantId && selectedLoosePlantData && (
-            <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{selectedLoosePlantData.emoji}</span>
-                <h3 className="font-display text-lg text-garden-dark">{selectedLoosePlantData.name}</h3>
-              </div>
-              <div className="text-xs text-garden-dark/60">
-                <p>Spacing: {selectedLoosePlantData.spacing}&quot; • {selectedLoosePlantData.sunNeeds} sun</p>
-              </div>
-              <button onClick={() => deleteLoosePlant(selectedLoosePlantId)} className="mt-3 text-red-400 hover:text-red-600 text-xs">Remove</button>
+            <div className="hidden md:block absolute top-4 right-4 z-10 w-80 shadow-xl border-2 border-garden-green/20 overflow-hidden rounded-2xl bg-white">
+              {(() => {
+                const plant = loosePlants.find(p => p.id === selectedLoosePlantId)
+                const variety = plant?.varietyId ? selectedLoosePlantData.varieties?.find(v => v.id === plant.varietyId) : null
+                const displayName = variety ? `${selectedLoosePlantData.name} - ${variety.name}` : selectedLoosePlantData.name
+                const harvestDays = variety ? variety.daysToHarvest : selectedLoosePlantData.daysToHarvest
+                
+                const getPlantingTime = () => {
+                  if (selectedLoosePlantData.seedIndoors && selectedLoosePlantData.transplant) {
+                    return `Start seeds ${selectedLoosePlantData.seedIndoors[0]}-${selectedLoosePlantData.seedIndoors[1]} weeks before last frost, transplant ${Math.abs(selectedLoosePlantData.transplant[0])}-${Math.abs(selectedLoosePlantData.transplant[1])} weeks ${selectedLoosePlantData.transplant[0] < 0 ? 'before' : 'after'} last frost`
+                  } else if (selectedLoosePlantData.directSow) {
+                    return `Direct sow ${Math.abs(selectedLoosePlantData.directSow[0])}-${Math.abs(selectedLoosePlantData.directSow[1])} weeks ${selectedLoosePlantData.directSow[0] < 0 ? 'before' : 'after'} last frost`
+                  } else if (selectedLoosePlantData.transplant) {
+                    return `Transplant ${Math.abs(selectedLoosePlantData.transplant[0])}-${Math.abs(selectedLoosePlantData.transplant[1])} weeks ${selectedLoosePlantData.transplant[0] < 0 ? 'before' : 'after'} last frost`
+                  }
+                  return 'Check seed packet for timing'
+                }
+
+                return (
+                  <>
+                    {/* Seed packet header */}
+                    <div 
+                      className="px-4 py-3 text-white relative"
+                      style={{ 
+                        background: variety?.color || selectedLoosePlantData.color,
+                        backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%)'
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl drop-shadow-sm">{selectedLoosePlantData.emoji}</span>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg leading-tight drop-shadow-sm">{displayName}</h3>
+                          <div className="text-sm opacity-90 font-medium">Premium Garden Seeds</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Seed packet body */}
+                    <div className="p-4 bg-gradient-to-b from-garden-cream/20 to-white">
+                      {variety && (
+                        <div className="mb-3 p-2 bg-garden-green/5 rounded-lg border border-garden-green/10">
+                          <div className="text-sm font-semibold text-garden-dark mb-1">{variety.name}</div>
+                          <div className="text-xs text-garden-dark/70">{variety.description}</div>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                        <div>
+                          <div className="font-bold text-garden-dark">📏 Spacing</div>
+                          <div className="text-garden-dark/70">{selectedLoosePlantData.spacing} inches</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-garden-dark">☀️ Sun</div>
+                          <div className="text-garden-dark/70 capitalize">{selectedLoosePlantData.sunNeeds}</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-garden-dark">💧 Water</div>
+                          <div className="text-garden-dark/70 capitalize">{selectedLoosePlantData.waterNeeds}</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-garden-dark">⏰ Harvest</div>
+                          <div className="text-garden-dark/70">{harvestDays[0]}-{harvestDays[1]} days</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-garden-dark">🌡️ Zones</div>
+                          <div className="text-garden-dark/70">{selectedLoosePlantData.zones[0]}-{selectedLoosePlantData.zones[1]}</div>
+                        </div>
+                      </div>
+
+                      <div className="mb-3">
+                        <div className="font-bold text-garden-dark text-xs mb-1">🌱 When to Plant</div>
+                        <div className="text-xs text-garden-dark/70 leading-relaxed">{getPlantingTime()}</div>
+                      </div>
+
+                      <button onClick={() => deleteLoosePlant(selectedLoosePlantId)} className="w-full text-red-500 hover:text-red-700 text-xs font-semibold py-2 px-3 rounded-lg border border-red-200 hover:bg-red-50 transition-colors">
+                        Remove Plant
+                      </button>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           )}
 
@@ -768,11 +1081,13 @@ export default function GardenPlanPage() {
                     width: bed.width, height: bed.height,
                     transform: `rotate(${bed.rotation || 0}deg)`,
                     transformOrigin: 'center',
-                    borderRadius: bed.shape === 'circle' ? '50%' : bed.shape === 'raised' ? '12px' : '8px',
+                    borderRadius: bed.shape === 'circle' || bed.shape === 'pot' ? '50%' : bed.shape === 'raised' ? '12px' : '8px',
                     background: bed.shape === 'raised'
                       ? 'linear-gradient(135deg, #8B6914 0%, #A67C52 100%)'
+                      : bed.shape === 'pot'
+                      ? 'linear-gradient(135deg, #C67A4B 0%, #A85D3A 100%)'
                       : 'linear-gradient(135deg, #6B9B4E22 0%, #4A7C2E33 100%)',
-                    border: bed.shape === 'raised' ? '3px solid #8B691480' : '2px solid #4A7C2E40',
+                    border: bed.shape === 'raised' ? '3px solid #8B691480' : bed.shape === 'pot' ? '3px solid #8B4513' : '2px solid #4A7C2E40',
                     cursor: pendingPlantId ? 'crosshair' : (dragState?.type === 'bed-move' && dragState.bedId === bed.id ? 'grabbing' : 'grab'),
                     touchAction: 'none',
                   }}
@@ -781,7 +1096,7 @@ export default function GardenPlanPage() {
                   onTouchStart={(e) => handleBedPointerDown(e, bed)}
                 >
                   {/* Label */}
-                  <div className={`absolute -top-6 left-1 text-xs font-semibold ${bed.shape === 'raised' ? 'text-amber-700' : 'text-garden-green'} whitespace-nowrap pointer-events-none`}>
+                  <div className={`absolute -top-6 left-1 text-xs font-semibold ${bed.shape === 'raised' ? 'text-amber-700' : bed.shape === 'pot' ? 'text-amber-800' : 'text-garden-green'} whitespace-nowrap pointer-events-none`}>
                     {bed.name}
                   </div>
 
@@ -864,6 +1179,72 @@ export default function GardenPlanPage() {
         </main>
       </div>
 
+      {/* Variety Picker Modal */}
+      {showVarietyPicker && pendingPlantId && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowVarietyPicker(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-garden-green/10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-display text-garden-dark">Choose Variety</h3>
+                <button onClick={() => setShowVarietyPicker(false)} className="text-garden-dark/50 hover:text-garden-dark text-xl">×</button>
+              </div>
+              {(() => {
+                const plantData = plantMap.get(pendingPlantId)
+                if (!plantData) return null
+                return (
+                  <div className="flex items-center gap-3 mt-2">
+                    <span className="text-2xl">{plantData.emoji}</span>
+                    <div>
+                      <div className="font-semibold text-garden-dark">{plantData.name}</div>
+                      <div className="text-xs text-garden-dark/60">Select a variety to plant</div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-2">
+                {/* Generic option */}
+                <button
+                  onClick={() => {
+                    setPendingVarietyId(null)
+                    setShowVarietyPicker(false)
+                    if (bottomSheetOpen) setBottomSheetOpen(false)
+                  }}
+                  className="w-full text-left p-3 rounded-xl bg-garden-cream/30 hover:bg-garden-cream/50 transition-colors"
+                >
+                  <div className="font-semibold text-garden-dark">Generic</div>
+                  <div className="text-xs text-garden-dark/60">Standard variety</div>
+                </button>
+                
+                {/* Variety options */}
+                {(() => {
+                  const plantData = plantMap.get(pendingPlantId)
+                  if (!plantData?.varieties) return null
+                  return plantData.varieties.map(variety => (
+                    <button
+                      key={variety.id}
+                      onClick={() => {
+                        setPendingVarietyId(variety.id)
+                        setShowVarietyPicker(false)
+                        if (bottomSheetOpen) setBottomSheetOpen(false)
+                      }}
+                      className="w-full text-left p-3 rounded-xl bg-garden-cream/30 hover:bg-garden-cream/50 transition-colors"
+                    >
+                      <div className="font-semibold text-garden-dark">{variety.name}</div>
+                      <div className="text-xs text-garden-dark/60 mb-1">{variety.description}</div>
+                      <div className="text-xs text-garden-dark/50">
+                        {variety.daysToHarvest[0]}-{variety.daysToHarvest[1]} days to harvest
+                      </div>
+                    </button>
+                  ))
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile bottom sheet */}
       {bottomSheetOpen && (
         <div className="md:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setBottomSheetOpen(false)}>
@@ -871,12 +1252,13 @@ export default function GardenPlanPage() {
             <div className="p-4 border-b border-garden-green/10">
               <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-3" />
               <div className="flex gap-2 justify-center">
-                <button onClick={() => setSidebarTab('plants')} className={`px-4 py-2 rounded-lg text-sm font-semibold ${sidebarTab === 'plants' ? 'bg-garden-green text-white' : 'text-garden-dark/60'}`}>🌱 Plants</button>
-                <button onClick={() => setSidebarTab('beds')} className={`px-4 py-2 rounded-lg text-sm font-semibold ${sidebarTab === 'beds' ? 'bg-garden-green text-white' : 'text-garden-dark/60'}`}>📐 Beds</button>
+                <button onClick={() => setSidebarTab('plants')} className={`px-3 py-2 rounded-lg text-sm font-semibold ${sidebarTab === 'plants' ? 'bg-garden-green text-white' : 'text-garden-dark/60'}`}>🌱 Plants</button>
+                <button onClick={() => setSidebarTab('beds')} className={`px-3 py-2 rounded-lg text-sm font-semibold ${sidebarTab === 'beds' ? 'bg-garden-green text-white' : 'text-garden-dark/60'}`}>📐 Beds</button>
+                <button onClick={() => setSidebarTab('list')} className={`px-3 py-2 rounded-lg text-sm font-semibold ${sidebarTab === 'list' ? 'bg-garden-green text-white' : 'text-garden-dark/60'}`}>📋 List</button>
               </div>
             </div>
             <div className="p-4 overflow-y-auto max-h-[calc(75vh-80px)]">
-              {sidebarTab === 'plants' ? renderPlantPalette(true) : renderBedPalette()}
+              {sidebarTab === 'plants' ? renderPlantPalette(true) : sidebarTab === 'beds' ? renderBedPalette() : renderPlantList()}
             </div>
           </div>
         </div>
