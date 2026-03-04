@@ -899,7 +899,7 @@ export default function GardenPlanPage() {
 
           {/* Pending plant bar — bottom, ABOVE everything else */}
           {pendingPlantId && !showVarietyPicker && (
-            <div className="absolute bottom-14 left-0 right-0 z-40 pointer-events-auto">
+            <div className="absolute bottom-20 left-0 right-0 z-40 pointer-events-auto">
               <div className="bg-garden-green text-white p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{plantMap.get(pendingPlantId)?.emoji}</span>
@@ -1156,7 +1156,7 @@ export default function GardenPlanPage() {
             if (!plantData || !plant) return null
             const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
             return (
-              <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-20 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
                     <span className="text-2xl">{plantData.emoji}</span>
@@ -1179,7 +1179,7 @@ export default function GardenPlanPage() {
             if (!plantData || !plant) return null
             const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
             return (
-              <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-20 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
                     <span className="text-2xl">{plantData.emoji}</span>
@@ -1197,7 +1197,7 @@ export default function GardenPlanPage() {
 
           {/* Mobile bottom info bar for beds (hidden when placing) */}
           {!pendingPlantId && selectedBedId && !selectedPlantId && selectedBed && (
-            <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+            <div className="md:hidden absolute bottom-20 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold text-garden-dark">{selectedBed.name}</div>
@@ -1220,7 +1220,7 @@ export default function GardenPlanPage() {
             const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
             if (!selectedShade) return null
             return (
-              <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-20 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-semibold text-garden-dark flex items-center gap-2">
