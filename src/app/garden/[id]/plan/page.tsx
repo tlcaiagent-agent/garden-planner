@@ -868,7 +868,7 @@ export default function GardenPlanPage() {
           </div>
 
           {/* Scale bar */}
-          <div className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-garden-green/10 shadow-sm pointer-events-none">
+          <div className="absolute bottom-16 left-4 z-10 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-garden-green/10 shadow-sm pointer-events-none">
             <div className="flex items-center gap-2">
               <div className="w-10 h-0.5 bg-garden-dark"></div>
               <span className="text-xs text-garden-dark/70 font-mono">1 ft</span>
@@ -876,7 +876,7 @@ export default function GardenPlanPage() {
           </div>
 
           {/* Compass widget */}
-          <div className="absolute bottom-4 right-4 z-10 bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-16 h-16 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none pointer-events-auto"
+          <div className="absolute bottom-16 right-4 z-10 bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-16 h-16 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none pointer-events-auto"
             onClick={rotateCompass}
             title={`Garden orientation: North is ${gardenNorthAngle === 0 ? 'up' : `${gardenNorthAngle}° clockwise from up`}`}
           >
@@ -907,23 +907,32 @@ export default function GardenPlanPage() {
           </div>
 
           {/* Zoom buttons */}
-          <div className="absolute bottom-4 left-20 z-10 flex gap-1 pointer-events-auto">
+          <div className="absolute bottom-16 left-20 z-10 flex gap-1 pointer-events-auto">
             <button onClick={zoomOut} className="bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-sm font-bold">−</button>
             <button onClick={zoomReset} className="bg-white/90 backdrop-blur-sm px-2 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-xs font-mono">{Math.round(zoom * 100)}%</button>
             <button onClick={zoomIn} className="bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-sm font-bold">+</button>
           </div>
 
-          {/* Pending plant banner */}
+          {/* Pending plant bar — bottom of screen */}
           {pendingPlantId && !showVarietyPicker && (
-            <div className="absolute top-16 md:top-4 left-1/2 -translate-x-1/2 z-20 bg-garden-green text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap pointer-events-auto">
-              <span>
-                {plantMap.get(pendingPlantId)?.emoji} Tap anywhere to place {plantMap.get(pendingPlantId)?.name}
-                {pendingVarietyId && (() => {
-                  const variety = plantMap.get(pendingPlantId)?.varieties?.find(v => v.id === pendingVarietyId)
-                  return variety ? ` (${variety.name})` : ''
-                })()}
-              </span>
-              <button onClick={() => { setPendingPlantId(null); setPendingVarietyId(null) }} className="ml-1 hover:text-red-200 text-lg leading-none">×</button>
+            <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-auto">
+              <div className="bg-garden-green text-white p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{plantMap.get(pendingPlantId)?.emoji}</span>
+                  <div>
+                    <div className="text-sm font-semibold">
+                      Placing: {plantMap.get(pendingPlantId)?.name}
+                      {pendingVarietyId && (() => {
+                        const variety = plantMap.get(pendingPlantId)?.varieties?.find(v => v.id === pendingVarietyId)
+                        return variety ? ` — ${variety.name}` : ''
+                      })()}
+                    </div>
+                    <div className="text-xs text-white/70">Tap anywhere on the grid to place</div>
+                  </div>
+                </div>
+                <button onClick={() => { setPendingPlantId(null); setPendingVarietyId(null) }}
+                  className="bg-white/20 hover:bg-white/30 w-10 h-10 rounded-lg flex items-center justify-center text-lg">✕</button>
+              </div>
             </div>
           )}
 
@@ -1248,8 +1257,8 @@ export default function GardenPlanPage() {
 
           </div>{/* end floating overlay */}
 
-          {/* ===== SCROLL CONTAINER ===== */}
-          <div ref={scrollContainerRef} className="absolute inset-0 overflow-auto">
+          {/* ===== SCROLL CONTAINER (hidden scrollbars) ===== */}
+          <div ref={scrollContainerRef} className="absolute inset-0 overflow-auto no-scrollbar">
 
           {/* ====== THE CANVAS ====== */}
           <div ref={canvasRef}

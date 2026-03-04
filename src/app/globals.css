@@ -25,3 +25,7 @@
 ::-webkit-scrollbar-track { background: #FFF8E7; }
 ::-webkit-scrollbar-thumb { background: #4A7C2E; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #2D5016; }
+
+/* Hide scrollbars on canvas scroll container */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
