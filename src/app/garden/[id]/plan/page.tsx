@@ -803,7 +803,7 @@ export default function GardenPlanPage() {
   const selectedLoosePlantData = selectedLoosePlant ? plantMap.get(selectedLoosePlant.plantType) : null
 
   return (
-    <div className="min-h-screen bg-garden-cream/50 flex flex-col">
+    <div className="h-[100dvh] bg-garden-cream/50 flex flex-col overflow-hidden">
       <Navbar />
       <div className="flex-1 flex overflow-hidden relative">
 
@@ -897,9 +897,9 @@ export default function GardenPlanPage() {
             </div>
           </div>
 
-          {/* Pending plant bar — bottom of screen */}
+          {/* Pending plant bar — bottom, ABOVE everything else */}
           {pendingPlantId && !showVarietyPicker && (
-            <div className="absolute bottom-14 left-0 right-0 z-20 pointer-events-auto">
+            <div className="absolute bottom-14 left-0 right-0 z-40 pointer-events-auto">
               <div className="bg-garden-green text-white p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{plantMap.get(pendingPlantId)?.emoji}</span>
@@ -1148,8 +1148,8 @@ export default function GardenPlanPage() {
             )
           })()}
 
-          {/* Mobile bottom info bar for selected bed plant */}
-          {selectedPlantId && selectedBedId && (() => {
+          {/* Mobile bottom info bar for selected bed plant (hidden when placing) */}
+          {!pendingPlantId && selectedPlantId && selectedBedId && (() => {
             const bed = beds.find(b => b.id === selectedBedId)
             const plant = bed?.plants.find(p => p.id === selectedPlantId)
             const plantData = plant ? plantMap.get(plant.plantType) : null
@@ -1172,8 +1172,8 @@ export default function GardenPlanPage() {
             )
           })()}
 
-          {/* Mobile bottom info bar for selected loose plant */}
-          {selectedLoosePlantId && (() => {
+          {/* Mobile bottom info bar for selected loose plant (hidden when placing) */}
+          {!pendingPlantId && selectedLoosePlantId && (() => {
             const plant = loosePlants.find(p => p.id === selectedLoosePlantId)
             const plantData = plant ? plantMap.get(plant.plantType) : null
             if (!plantData || !plant) return null
@@ -1195,8 +1195,8 @@ export default function GardenPlanPage() {
             )
           })()}
 
-          {/* Mobile bottom info bar for beds */}
-          {selectedBedId && !selectedPlantId && selectedBed && (
+          {/* Mobile bottom info bar for beds (hidden when placing) */}
+          {!pendingPlantId && selectedBedId && !selectedPlantId && selectedBed && (
             <div className="md:hidden absolute bottom-14 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -1215,8 +1215,8 @@ export default function GardenPlanPage() {
             </div>
           )}
 
-          {/* Mobile bottom info bar for shade zones */}
-          {selectedShadeId && (() => {
+          {/* Mobile bottom info bar for shade zones (hidden when placing) */}
+          {!pendingPlantId && selectedShadeId && (() => {
             const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
             if (!selectedShade) return null
             return (
