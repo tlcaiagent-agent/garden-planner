@@ -9,7 +9,6 @@ import Link from 'next/link'
 const GRID_SIZE = 20
 const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE
 
-// 20px = 6 inches → 40px = 1 foot
 const pxToFeetInches = (px: number) => {
   const inches = (px / 20) * 6
   const feet = Math.floor(inches / 12)
@@ -24,7 +23,7 @@ const getPlantSize = (spacing: number) => Math.max(20, Math.min(80, spacing * 1.
 type BedShape = 'rectangle' | 'l-shape' | 'circle' | 'raised'
 
 interface DragState {
-  type: 'plant-move' | 'bed-move' | 'bed-resize' | 'bed-rotate'
+  type: 'plant-move' | 'loose-plant-move' | 'bed-move' | 'bed-resize' | 'bed-rotate'
   plantId?: string
   bedId?: string
   offsetX: number
@@ -39,15 +38,18 @@ export default function GardenPlanPage() {
   const garden = mockGardens.find(g => g.id === gardenId) || mockGardens[0]
 
   const [beds, setBeds] = useState<GardenBed[]>(garden.beds)
+  const [loosePlants, setLoosePlants] = useState<PlacedPlant[]>(garden.loosePlants || [])
   const [selectedBedId, setSelectedBedId] = useState<string | null>(null)
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
+  const [selectedLoosePlantId, setSelectedLoosePlantId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const [showCompanion, setShowCompanion] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<'plants' | 'beds'>('plants')
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [bottomSheetOpen, setBottomSheetOpen] = useState(false)
-  const [mobilePlantDrag, setMobilePlantDrag] = useState<{ plantId: string; x: number; y: number } | null>(null)
+  const [pendingPlantId, setPendingPlantId] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLElement>(null)
 
   const selectedBed = beds.find(b => b.id === selectedBedId)
 
@@ -63,19 +65,40 @@ export default function GardenPlanPage() {
     }
   }, [beds])
 
-  // --- helpers ---
   const canvasXY = (clientX: number, clientY: number) => {
     const rect = canvasRef.current!.getBoundingClientRect()
     return { x: clientX - rect.left, y: clientY - rect.top }
   }
 
+  // Lock/unlock scroll on the overflow container when dragging
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    if (dragState) {
+      el.style.overflow = 'hidden'
+      // Also prevent touch scrolling
+      const prevent = (e: TouchEvent) => { if (dragState) e.preventDefault() }
+      el.addEventListener('touchmove', prevent, { passive: false })
+      return () => {
+        el.style.overflow = 'auto'
+        el.removeEventListener('touchmove', prevent)
+      }
+    } else {
+      el.style.overflow = 'auto'
+    }
+  }, [dragState])
+
   const addBed = (shape: BedShape) => {
+    // Place bed in visible area
+    const el = scrollContainerRef.current
+    const scrollX = el ? el.scrollLeft : 0
+    const scrollY = el ? el.scrollTop : 0
     const newBed: GardenBed = {
       id: `bed-${Date.now()}`,
       name: `New ${shape} bed`,
       shape,
-      x: snap(80),
-      y: snap(80),
+      x: snap(scrollX + 100),
+      y: snap(scrollY + 100),
       width: shape === 'circle' ? 160 : 260,
       height: shape === 'circle' ? 160 : 160,
       rotation: 0,
@@ -83,6 +106,8 @@ export default function GardenPlanPage() {
     }
     setBeds(prev => [...prev, newBed])
     setSelectedBedId(newBed.id)
+    setSelectedPlantId(null)
+    setSelectedLoosePlantId(null)
     setBottomSheetOpen(false)
   }
 
@@ -96,32 +121,100 @@ export default function GardenPlanPage() {
     setSelectedPlantId(null)
   }
 
+  const deleteLoosePlant = (plantId: string) => {
+    setLoosePlants(prev => prev.filter(p => p.id !== plantId))
+    setSelectedLoosePlantId(null)
+  }
+
   const rotateBed = (bedId: string, degrees: number) => {
     setBeds(prev => prev.map(b =>
       b.id === bedId ? { ...b, rotation: ((b.rotation || 0) + degrees + 360) % 360 } : b
     ))
   }
 
-  // --- mouse handlers (desktop drag) ---
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.target === canvasRef.current) {
-      setSelectedBedId(null)
-      setSelectedPlantId(null)
+  // --- Mouse/touch handlers ---
+
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    // Only fire on the canvas background itself
+    if (e.target !== canvasRef.current) return
+
+    if (pendingPlantId) {
+      // Place plant on canvas (anywhere!)
+      const { x, y } = canvasXY(e.clientX, e.clientY)
+      const plantData = plantMap.get(pendingPlantId)
+      const sz = plantData ? getPlantSize(plantData.spacing) : 30
+
+      // Check if inside a bed first
+      const targetBed = beds.find(b =>
+        x >= b.x && x <= b.x + b.width &&
+        y >= b.y && y <= b.y + b.height
+      )
+
+      if (targetBed) {
+        const newPlant: PlacedPlant = {
+          id: `plant-${Date.now()}`,
+          plantType: pendingPlantId,
+          x: snap(x - targetBed.x - sz / 2),
+          y: snap(y - targetBed.y - sz / 2),
+        }
+        setBeds(prev => prev.map(b =>
+          b.id === targetBed.id ? { ...b, plants: [...b.plants, newPlant] } : b
+        ))
+      } else {
+        // Place as loose plant on canvas
+        const newPlant: PlacedPlant = {
+          id: `plant-${Date.now()}`,
+          plantType: pendingPlantId,
+          x: snap(x - sz / 2),
+          y: snap(y - sz / 2),
+        }
+        setLoosePlants(prev => [...prev, newPlant])
+      }
+      return
     }
+
+    // Deselect everything
+    setSelectedBedId(null)
+    setSelectedPlantId(null)
+    setSelectedLoosePlantId(null)
   }
 
-  const handleBedMouseDown = (e: React.MouseEvent | React.TouchEvent, bed: GardenBed) => {
+  // Also handle clicks on beds for placing plants
+  const handleBedClick = (e: React.MouseEvent, bed: GardenBed) => {
+    if (!pendingPlantId) return
+    e.stopPropagation()
+    const { x, y } = canvasXY(e.clientX, e.clientY)
+    const plantData = plantMap.get(pendingPlantId)
+    const sz = plantData ? getPlantSize(plantData.spacing) : 30
+    const newPlant: PlacedPlant = {
+      id: `plant-${Date.now()}`,
+      plantType: pendingPlantId,
+      x: snap(x - bed.x - sz / 2),
+      y: snap(y - bed.y - sz / 2),
+    }
+    setBeds(prev => prev.map(b =>
+      b.id === bed.id ? { ...b, plants: [...b.plants, newPlant] } : b
+    ))
+  }
+
+  const startDrag = (ds: DragState) => {
+    setDragState(ds)
+  }
+
+  const handleBedPointerDown = (e: React.MouseEvent | React.TouchEvent, bed: GardenBed) => {
+    if (pendingPlantId) return // don't start bed drag if placing a plant
     e.stopPropagation()
     const client = 'touches' in e ? e.touches[0] : e
     const { x, y } = canvasXY(client.clientX, client.clientY)
     setSelectedBedId(bed.id)
     setSelectedPlantId(null)
-    setDragState({ type: 'bed-move', bedId: bed.id, offsetX: x - bed.x, offsetY: y - bed.y })
+    setSelectedLoosePlantId(null)
+    startDrag({ type: 'bed-move', bedId: bed.id, offsetX: x - bed.x, offsetY: y - bed.y })
   }
 
   const handleResizeStart = (e: React.MouseEvent | React.TouchEvent, bed: GardenBed) => {
     e.stopPropagation()
-    setDragState({ type: 'bed-resize', bedId: bed.id, offsetX: 0, offsetY: 0 })
+    startDrag({ type: 'bed-resize', bedId: bed.id, offsetX: 0, offsetY: 0 })
   }
 
   const handleRotateStart = (e: React.MouseEvent | React.TouchEvent, bed: GardenBed) => {
@@ -131,33 +224,41 @@ export default function GardenPlanPage() {
     const cx = bed.x + bed.width / 2
     const cy = bed.y + bed.height / 2
     const startAngle = Math.atan2(y - cy, x - cx) * 180 / Math.PI
-    setDragState({
-      type: 'bed-rotate',
-      bedId: bed.id,
-      offsetX: cx,
-      offsetY: cy,
-      startAngle,
-      startRotation: bed.rotation || 0,
+    startDrag({
+      type: 'bed-rotate', bedId: bed.id,
+      offsetX: cx, offsetY: cy,
+      startAngle, startRotation: bed.rotation || 0,
     })
   }
 
-  const handlePlantMouseDown = (e: React.MouseEvent | React.TouchEvent, plant: PlacedPlant, bedId: string) => {
+  const handlePlantPointerDown = (e: React.MouseEvent | React.TouchEvent, plant: PlacedPlant, bedId: string) => {
     e.stopPropagation()
     const bed = beds.find(b => b.id === bedId)!
     const client = 'touches' in e ? e.touches[0] : e
     const { x, y } = canvasXY(client.clientX, client.clientY)
     setSelectedPlantId(plant.id)
     setSelectedBedId(bedId)
-    setDragState({
-      type: 'plant-move',
-      plantId: plant.id,
-      bedId,
-      offsetX: x - bed.x - plant.x,
-      offsetY: y - bed.y - plant.y,
+    setSelectedLoosePlantId(null)
+    startDrag({
+      type: 'plant-move', plantId: plant.id, bedId,
+      offsetX: x - bed.x - plant.x, offsetY: y - bed.y - plant.y,
     })
   }
 
-  // --- HTML5 drag from palette (desktop) ---
+  const handleLoosePlantPointerDown = (e: React.MouseEvent | React.TouchEvent, plant: PlacedPlant) => {
+    e.stopPropagation()
+    const client = 'touches' in e ? e.touches[0] : e
+    const { x, y } = canvasXY(client.clientX, client.clientY)
+    setSelectedLoosePlantId(plant.id)
+    setSelectedPlantId(null)
+    setSelectedBedId(null)
+    startDrag({
+      type: 'loose-plant-move', plantId: plant.id,
+      offsetX: x - plant.x, offsetY: y - plant.y,
+    })
+  }
+
+  // HTML5 drag from desktop sidebar
   const handlePaletteDragStart = (e: React.DragEvent, plant: PlantData) => {
     e.dataTransfer.setData('plantId', plant.id)
     e.dataTransfer.effectAllowed = 'copy'
@@ -173,14 +274,16 @@ export default function GardenPlanPage() {
     const plantId = e.dataTransfer.getData('plantId')
     if (!plantId) return
     const { x: dropX, y: dropY } = canvasXY(e.clientX, e.clientY)
+    const plantData = plantMap.get(plantId)
+    const sz = plantData ? getPlantSize(plantData.spacing) : 30
 
+    // Check if inside a bed
     const targetBed = beds.find(b =>
       dropX >= b.x && dropX <= b.x + b.width &&
       dropY >= b.y && dropY <= b.y + b.height
     )
+
     if (targetBed) {
-      const plantData = plantMap.get(plantId)
-      const sz = plantData ? getPlantSize(plantData.spacing) : 30
       const newPlant: PlacedPlant = {
         id: `plant-${Date.now()}`,
         plantType: plantId,
@@ -190,39 +293,27 @@ export default function GardenPlanPage() {
       setBeds(prev => prev.map(b =>
         b.id === targetBed.id ? { ...b, plants: [...b.plants, newPlant] } : b
       ))
-    }
-  }
-
-  // --- Mobile: tap plant in palette to "select" it, then tap bed to place ---
-  const [pendingPlantId, setPendingPlantId] = useState<string | null>(null)
-
-  const handleCanvasTap = (e: React.MouseEvent) => {
-    if (!pendingPlantId) return
-    const { x, y } = canvasXY(e.clientX, e.clientY)
-    const targetBed = beds.find(b =>
-      x >= b.x && x <= b.x + b.width &&
-      y >= b.y && y <= b.y + b.height
-    )
-    if (targetBed) {
-      const plantData = plantMap.get(pendingPlantId)
-      const sz = plantData ? getPlantSize(plantData.spacing) : 30
+    } else {
+      // Drop as loose plant
       const newPlant: PlacedPlant = {
         id: `plant-${Date.now()}`,
-        plantType: pendingPlantId,
-        x: snap(x - targetBed.x - sz / 2),
-        y: snap(y - targetBed.y - sz / 2),
+        plantType: plantId,
+        x: snap(dropX - sz / 2),
+        y: snap(dropY - sz / 2),
       }
-      setBeds(prev => prev.map(b =>
-        b.id === targetBed.id ? { ...b, plants: [...b.plants, newPlant] } : b
-      ))
-      // Keep the plant selected for placing multiple
+      setLoosePlants(prev => [...prev, newPlant])
     }
   }
 
-  // --- drag effect ---
+  // --- Drag movement ---
   useEffect(() => {
+    if (!dragState) return
+
     const onMove = (e: MouseEvent | TouchEvent) => {
-      if (!dragState || !canvasRef.current) return
+      if (!canvasRef.current) return
+      // Prevent scrolling while dragging
+      if ('touches' in e) e.preventDefault()
+
       const client = 'touches' in e ? e.touches[0] : e
       const { x, y } = canvasXY(client.clientX, client.clientY)
 
@@ -263,17 +354,21 @@ export default function GardenPlanPage() {
             }
             : b
         ))
+      } else if (dragState.type === 'loose-plant-move' && dragState.plantId) {
+        setLoosePlants(prev => prev.map(p =>
+          p.id === dragState.plantId
+            ? { ...p, x: snap(x - dragState.offsetX), y: snap(y - dragState.offsetY) }
+            : p
+        ))
       }
     }
 
     const onUp = () => setDragState(null)
 
-    if (dragState) {
-      window.addEventListener('mousemove', onMove)
-      window.addEventListener('mouseup', onUp)
-      window.addEventListener('touchmove', onMove, { passive: false })
-      window.addEventListener('touchend', onUp)
-    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('touchend', onUp)
     return () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
@@ -286,7 +381,7 @@ export default function GardenPlanPage() {
     ? plantCatalog
     : plantCatalog.filter(p => p.category === filterCategory)
 
-  // --- Shared palette content ---
+  // --- Shared UI pieces ---
   const renderPlantPalette = (isMobile: boolean) => (
     <div className="space-y-3">
       <div className="flex gap-1 flex-wrap">
@@ -299,10 +394,9 @@ export default function GardenPlanPage() {
       </div>
 
       {pendingPlantId && (
-        <div className="bg-garden-green/10 border border-garden-green rounded-xl p-3 text-sm text-garden-dark">
-          <span className="font-semibold">🌱 Placing: {plantMap.get(pendingPlantId)?.name}</span>
-          <span className="text-garden-dark/60"> — tap a bed on the canvas to place</span>
-          <button onClick={() => setPendingPlantId(null)} className="ml-2 text-red-400 hover:text-red-600">✕</button>
+        <div className="bg-garden-green/10 border border-garden-green rounded-xl p-2 text-sm text-garden-dark flex items-center justify-between">
+          <span>🌱 <b>{plantMap.get(pendingPlantId)?.name}</b> — tap anywhere to place</span>
+          <button onClick={() => setPendingPlantId(null)} className="text-red-400 hover:text-red-600 px-2">✕</button>
         </div>
       )}
 
@@ -311,16 +405,13 @@ export default function GardenPlanPage() {
           <div key={plant.id}
             draggable={!isMobile}
             onDragStart={!isMobile ? (e) => handlePaletteDragStart(e, plant) : undefined}
-            onClick={isMobile ? () => { setPendingPlantId(plant.id); setBottomSheetOpen(false) } : () => setPendingPlantId(plant.id)}
-            className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors group ${pendingPlantId === plant.id ? 'bg-garden-green/10 ring-1 ring-garden-green' : 'hover:bg-garden-cream/50'}`}>
+            onClick={() => { setPendingPlantId(plant.id); if (isMobile) setBottomSheetOpen(false) }}
+            className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors group touch-manipulation ${pendingPlantId === plant.id ? 'bg-garden-green/10 ring-1 ring-garden-green' : 'hover:bg-garden-cream/50'}`}>
             <span className="text-2xl">{plant.emoji}</span>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-garden-dark truncate">{plant.name}</div>
               <div className="text-xs text-garden-dark/40">{plant.spacing}&quot; spacing • {plant.sunNeeds} sun</div>
             </div>
-            <span className="text-garden-dark/20 group-hover:text-garden-dark/40 text-xs hidden md:inline">
-              {pendingPlantId === plant.id ? 'selected' : 'drag / click'}
-            </span>
           </div>
         ))}
       </div>
@@ -344,7 +435,6 @@ export default function GardenPlanPage() {
           </button>
         ))}
       </div>
-
       {beds.length > 0 && (
         <div className="pt-3 border-t border-garden-green/10">
           <p className="text-xs text-garden-dark/50 mb-2">Your beds:</p>
@@ -364,6 +454,10 @@ export default function GardenPlanPage() {
       )}
     </div>
   )
+
+  // Info for selected loose plant
+  const selectedLoosePlant = loosePlants.find(p => p.id === selectedLoosePlantId)
+  const selectedLoosePlantData = selectedLoosePlant ? plantMap.get(selectedLoosePlant.plantType) : null
 
   return (
     <div className="min-h-screen bg-garden-cream/50 flex flex-col">
@@ -396,7 +490,7 @@ export default function GardenPlanPage() {
         </aside>
 
         {/* Canvas area */}
-        <main className="flex-1 overflow-auto bg-garden-cream/30 relative">
+        <main ref={scrollContainerRef as any} className="flex-1 overflow-auto bg-garden-cream/30 relative">
 
           {/* Mobile top bar */}
           <div className="md:hidden absolute top-3 left-3 right-3 z-20 flex gap-2">
@@ -416,30 +510,28 @@ export default function GardenPlanPage() {
 
           {/* Desktop top bar */}
           <div className="hidden md:flex absolute top-4 left-4 z-10 gap-2">
-            <Link href={`/garden/${gardenId}/calendar`} className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">
-              📅 Calendar
-            </Link>
+            <Link href={`/garden/${gardenId}/calendar`} className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">📅 Calendar</Link>
             <button className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">💾 Save</button>
             <button className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">🔗 Share</button>
           </div>
 
           {/* Scale bar */}
-          <div className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-garden-green/10 shadow-sm">
+          <div className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-garden-green/10 shadow-sm pointer-events-none">
             <div className="flex items-center gap-2">
               <div className="w-10 h-0.5 bg-garden-dark"></div>
               <span className="text-xs text-garden-dark/70 font-mono">1 ft</span>
             </div>
           </div>
 
-          {/* Pending plant indicator */}
+          {/* Pending plant banner */}
           {pendingPlantId && (
-            <div className="absolute top-16 md:top-4 left-1/2 -translate-x-1/2 z-20 bg-garden-green text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
-              <span>{plantMap.get(pendingPlantId)?.emoji} Tap a bed to place {plantMap.get(pendingPlantId)?.name}</span>
-              <button onClick={() => setPendingPlantId(null)} className="ml-1 hover:text-red-200">✕</button>
+            <div className="absolute top-16 md:top-4 left-1/2 -translate-x-1/2 z-20 bg-garden-green text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
+              <span>{plantMap.get(pendingPlantId)?.emoji} Tap anywhere to place {plantMap.get(pendingPlantId)?.name}</span>
+              <button onClick={() => setPendingPlantId(null)} className="ml-1 hover:text-red-200 text-lg leading-none">×</button>
             </div>
           )}
 
-          {/* Selection info — desktop (right side) */}
+          {/* Desktop info panels */}
           {selectedPlantId && selectedBedId && (() => {
             const bed = beds.find(b => b.id === selectedBedId)
             const plant = bed?.plants.find(p => p.id === selectedPlantId)
@@ -455,24 +547,33 @@ export default function GardenPlanPage() {
                 <div className="text-xs space-y-1 text-garden-dark/60">
                   <p>Spacing: {plantData.spacing}&quot; • {plantData.sunNeeds} sun • {plantData.waterNeeds} water</p>
                   <p>Harvest: {plantData.daysToHarvest[0]}-{plantData.daysToHarvest[1]} days</p>
-                  <p>Zones: {plantData.zones[0]}-{plantData.zones[1]}</p>
                 </div>
                 {showCompanion && companions.length > 0 && (
-                  <div className="mt-2 text-xs"><span className="text-green-600 font-semibold">✓ Good: </span>
-                    {companions.map(c => plantMap.get(c)?.emoji + ' ' + plantMap.get(c)?.name).join(', ')}
-                  </div>
+                  <div className="mt-2 text-xs"><span className="text-green-600 font-semibold">✓ </span>{companions.map(c => plantMap.get(c)?.emoji + ' ' + plantMap.get(c)?.name).join(', ')}</div>
                 )}
                 {showCompanion && enemies.length > 0 && (
-                  <div className="mt-1 text-xs"><span className="text-red-500 font-semibold">✗ Bad: </span>
-                    {enemies.map(c => plantMap.get(c)?.emoji + ' ' + plantMap.get(c)?.name).join(', ')}
-                  </div>
+                  <div className="mt-1 text-xs"><span className="text-red-500 font-semibold">✗ </span>{enemies.map(c => plantMap.get(c)?.emoji + ' ' + plantMap.get(c)?.name).join(', ')}</div>
                 )}
-                <button onClick={() => deletePlant(selectedBedId!, selectedPlantId!)} className="mt-3 text-red-400 hover:text-red-600 text-xs">Remove plant</button>
+                <button onClick={() => deletePlant(selectedBedId!, selectedPlantId!)} className="mt-3 text-red-400 hover:text-red-600 text-xs">Remove</button>
               </div>
             )
           })()}
 
-          {/* Bed info panel — desktop */}
+          {/* Loose plant info */}
+          {selectedLoosePlantId && selectedLoosePlantData && (
+            <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">{selectedLoosePlantData.emoji}</span>
+                <h3 className="font-display text-lg text-garden-dark">{selectedLoosePlantData.name}</h3>
+              </div>
+              <div className="text-xs text-garden-dark/60">
+                <p>Spacing: {selectedLoosePlantData.spacing}&quot; • {selectedLoosePlantData.sunNeeds} sun</p>
+              </div>
+              <button onClick={() => deleteLoosePlant(selectedLoosePlantId)} className="mt-3 text-red-400 hover:text-red-600 text-xs">Remove</button>
+            </div>
+          )}
+
+          {/* Bed info */}
           {selectedBedId && !selectedPlantId && selectedBed && (
             <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
               <div className="text-sm font-semibold text-garden-dark mb-1">{selectedBed.name}</div>
@@ -492,9 +593,9 @@ export default function GardenPlanPage() {
             </div>
           )}
 
-          {/* Mobile bottom info bar */}
+          {/* Mobile bottom info bar for beds */}
           {selectedBedId && !selectedPlantId && selectedBed && (
-            <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3 safe-bottom">
+            <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold text-garden-dark">{selectedBed.name}</div>
@@ -506,36 +607,62 @@ export default function GardenPlanPage() {
                 <div className="flex gap-1">
                   <button onClick={() => rotateBed(selectedBedId, -15)} className="bg-garden-cream text-garden-dark w-10 h-10 rounded-lg flex items-center justify-center text-lg">↺</button>
                   <button onClick={() => rotateBed(selectedBedId, 15)} className="bg-garden-cream text-garden-dark w-10 h-10 rounded-lg flex items-center justify-center text-lg">↻</button>
-                  <button onClick={() => deleteBed(selectedBedId)} className="bg-red-50 text-red-500 w-10 h-10 rounded-lg flex items-center justify-center text-lg">🗑️</button>
+                  <button onClick={() => deleteBed(selectedBedId)} className="bg-red-50 text-red-500 w-10 h-10 rounded-lg flex items-center justify-center">🗑️</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Canvas */}
+          {/* ====== THE CANVAS ====== */}
           <div ref={canvasRef}
-            className="relative"
+            className="relative select-none"
             style={{
-              minWidth: '1200px',
-              minHeight: '800px',
+              minWidth: '1400px',
+              minHeight: '900px',
               backgroundImage: 'radial-gradient(circle, #4A7C2E15 1px, transparent 1px)',
               backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+              touchAction: dragState ? 'none' : 'auto',
             }}
-            onMouseDown={handleCanvasMouseDown}
-            onClick={handleCanvasTap}
+            onClick={handleCanvasClick}
             onDragOver={handleCanvasDragOver}
             onDrop={handleCanvasDrop}
           >
+            {/* Loose plants (not in any bed) */}
+            {loosePlants.map(plant => {
+              const plantData = plantMap.get(plant.plantType)
+              if (!plantData) return null
+              const sz = getPlantSize(plantData.spacing)
+              const isSelected = selectedLoosePlantId === plant.id
+              return (
+                <div key={plant.id}
+                  className={`absolute flex items-center justify-center rounded-full transition-all select-none
+                    ${isSelected ? 'ring-2 ring-garden-dark scale-110 z-20' : 'hover:scale-105 z-[5]'}
+                    bg-white/60 shadow-sm`}
+                  style={{
+                    left: plant.x, top: plant.y,
+                    width: sz, height: sz,
+                    fontSize: Math.max(14, sz * 0.55),
+                    cursor: dragState?.type === 'loose-plant-move' && dragState.plantId === plant.id ? 'grabbing' : 'grab',
+                    touchAction: 'none',
+                  }}
+                  onMouseDown={(e) => handleLoosePlantPointerDown(e, plant)}
+                  onTouchStart={(e) => handleLoosePlantPointerDown(e, plant)}
+                  title={plantData.name}
+                >
+                  {plantData.emoji}
+                </div>
+              )
+            })}
+
+            {/* Beds */}
             {beds.map(bed => {
               const isSelected = selectedBedId === bed.id
               return (
                 <div key={bed.id}
                   className={`absolute group transition-shadow ${isSelected ? 'ring-2 ring-garden-green shadow-lg z-10' : 'shadow hover:shadow-md'}`}
                   style={{
-                    left: bed.x,
-                    top: bed.y,
-                    width: bed.width,
-                    height: bed.height,
+                    left: bed.x, top: bed.y,
+                    width: bed.width, height: bed.height,
                     transform: `rotate(${bed.rotation || 0}deg)`,
                     transformOrigin: 'center',
                     borderRadius: bed.shape === 'circle' ? '50%' : bed.shape === 'raised' ? '12px' : '8px',
@@ -543,24 +670,24 @@ export default function GardenPlanPage() {
                       ? 'linear-gradient(135deg, #8B6914 0%, #A67C52 100%)'
                       : 'linear-gradient(135deg, #6B9B4E22 0%, #4A7C2E33 100%)',
                     border: bed.shape === 'raised' ? '3px solid #8B691480' : '2px solid #4A7C2E40',
-                    cursor: dragState?.type === 'bed-move' && dragState.bedId === bed.id ? 'grabbing' : 'grab',
+                    cursor: pendingPlantId ? 'crosshair' : (dragState?.type === 'bed-move' && dragState.bedId === bed.id ? 'grabbing' : 'grab'),
+                    touchAction: 'none',
                   }}
-                  onMouseDown={(e) => handleBedMouseDown(e, bed)}
-                  onTouchStart={(e) => handleBedMouseDown(e, bed)}
+                  onClick={(e) => handleBedClick(e, bed)}
+                  onMouseDown={(e) => handleBedPointerDown(e, bed)}
+                  onTouchStart={(e) => handleBedPointerDown(e, bed)}
                 >
-                  {/* Bed label */}
+                  {/* Label */}
                   <div className={`absolute -top-6 left-1 text-xs font-semibold ${bed.shape === 'raised' ? 'text-amber-700' : 'text-garden-green'} whitespace-nowrap pointer-events-none`}>
                     {bed.name}
                   </div>
 
-                  {/* Measurements — only when selected */}
+                  {/* Measurements (selected only) */}
                   {isSelected && (
                     <>
-                      {/* Width along top */}
                       <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-mono text-garden-dark/70 bg-white/90 px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
                         {pxToFeetInches(bed.width)}
                       </div>
-                      {/* Height along left */}
                       <div className="absolute top-1/2 -right-5 translate-x-full -translate-y-1/2 text-[10px] font-mono text-garden-dark/70 bg-white/90 px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
                         {pxToFeetInches(bed.height)}
                       </div>
@@ -569,15 +696,14 @@ export default function GardenPlanPage() {
 
                   {/* Rotation handle */}
                   {isSelected && (
-                    <div
-                      className="absolute -top-10 left-1/2 -translate-x-1/2 w-7 h-7 bg-garden-green rounded-full cursor-pointer hover:bg-garden-green/80 flex items-center justify-center text-white text-sm shadow-md"
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-7 h-7 bg-garden-green rounded-full cursor-pointer hover:bg-garden-green/80 flex items-center justify-center text-white text-sm shadow-md"
+                      style={{ touchAction: 'none' }}
                       onMouseDown={(e) => handleRotateStart(e, bed)}
                       onTouchStart={(e) => handleRotateStart(e, bed)}
-                      title="Drag to rotate"
-                    >↻</div>
+                      title="Drag to rotate">↻</div>
                   )}
 
-                  {/* Plants */}
+                  {/* Plants in bed */}
                   {bed.plants.map(plant => {
                     const plantData = plantMap.get(plant.plantType)
                     if (!plantData) return null
@@ -593,16 +719,15 @@ export default function GardenPlanPage() {
                           ${showCompanion && hasEnemy ? 'ring-2 ring-red-400 bg-red-50' : ''}
                           ${showCompanion && hasCompanion ? 'ring-2 ring-green-400 bg-green-50' : ''}`}
                         style={{
-                          left: plant.x,
-                          top: plant.y,
-                          width: sz,
-                          height: sz,
+                          left: plant.x, top: plant.y,
+                          width: sz, height: sz,
                           fontSize: Math.max(14, sz * 0.55),
                           cursor: 'grab',
+                          touchAction: 'none',
                         }}
-                        onMouseDown={(e) => handlePlantMouseDown(e, plant, bed.id)}
-                        onTouchStart={(e) => handlePlantMouseDown(e, plant, bed.id)}
-                        title={`${plantData.name} (${plantData.spacing}" spacing)${hasCompanion ? ' ✓' : ''}${hasEnemy ? ' ✗' : ''}`}
+                        onMouseDown={(e) => handlePlantPointerDown(e, plant, bed.id)}
+                        onTouchStart={(e) => handlePlantPointerDown(e, plant, bed.id)}
+                        title={`${plantData.name} (${plantData.spacing}" spacing)`}
                       >
                         {plantData.emoji}
                       </div>
@@ -611,28 +736,23 @@ export default function GardenPlanPage() {
 
                   {/* Resize handle */}
                   {isSelected && (
-                    <div
-                      className="absolute -bottom-2 -right-2 w-5 h-5 bg-garden-green rounded-full cursor-se-resize opacity-70 hover:opacity-100 shadow-sm"
-                      style={{ touchAction: 'none', minWidth: 44, minHeight: 44, padding: 12, margin: -12 }}
+                    <div className="absolute -bottom-3 -right-3 w-6 h-6 bg-garden-green rounded-full cursor-se-resize opacity-70 hover:opacity-100 shadow-sm flex items-center justify-center"
+                      style={{ touchAction: 'none' }}
                       onMouseDown={(e) => handleResizeStart(e, bed)}
-                      onTouchStart={(e) => handleResizeStart(e, bed)}
-                    >
-                      <div className="w-full h-full bg-garden-green rounded-full" />
+                      onTouchStart={(e) => handleResizeStart(e, bed)}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" className="text-white"><path d="M8 2L2 8M8 5L5 8M8 8L8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </div>
                   )}
                 </div>
               )
             })}
 
-            {beds.length === 0 && (
+            {beds.length === 0 && loosePlants.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="text-center text-garden-dark/30">
                   <div className="text-6xl mb-4">🌱</div>
-                  <p className="text-xl font-display">Start by adding a bed</p>
-                  <p className="text-sm mt-2">
-                    <span className="hidden md:inline">Use the sidebar to add beds, then drag plants onto them</span>
-                    <span className="md:hidden">Tap 📐 Beds above to add your first bed</span>
-                  </p>
+                  <p className="text-xl font-display">Start planning your garden</p>
+                  <p className="text-sm mt-2">Select a plant and tap anywhere to place it, or add beds first</p>
                 </div>
               </div>
             )}

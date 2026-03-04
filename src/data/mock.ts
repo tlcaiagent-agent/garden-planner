@@ -6,6 +6,7 @@ export interface Garden {
   type: 'indoor' | 'outdoor'
   year: number
   beds: GardenBed[]
+  loosePlants?: PlacedPlant[] // plants placed directly on canvas, not in beds
 }
 
 export interface GardenBed {
