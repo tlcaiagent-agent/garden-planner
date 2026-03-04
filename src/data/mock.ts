@@ -16,6 +16,7 @@ export interface GardenBed {
   y: number
   width: number
   height: number
+  rotation?: number // rotation in degrees
   plants: PlacedPlant[]
 }
 
