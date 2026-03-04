@@ -870,12 +870,12 @@ export default function GardenPlanPage() {
           {/* Bottom toolbar: scale + zoom + compass */}
           <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-auto">
             {/* Scale + Zoom */}
-            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 border border-garden-green/10 shadow-sm">
+            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 border border-garden-green/10 shadow-sm">
               <div className="flex items-center gap-1.5">
-                <div className="w-8 h-0.5 bg-garden-dark"></div>
+                <div className="h-0.5 bg-garden-dark" style={{ width: `${40 * zoom}px` }}></div>
                 <span className="text-[10px] text-garden-dark/60 font-mono">1ft</span>
               </div>
-              <div className="w-px h-4 bg-garden-green/20"></div>
+              <div className="w-px h-4 bg-garden-green/20 mx-1"></div>
               <button onClick={zoomOut} className="w-7 h-7 rounded-md hover:bg-garden-cream flex items-center justify-center text-garden-dark text-sm font-bold">−</button>
               <span className="text-xs font-mono text-garden-dark/70 w-8 text-center">{Math.round(zoom * 100)}%</span>
               <button onClick={zoomIn} className="w-7 h-7 rounded-md hover:bg-garden-cream flex items-center justify-center text-garden-dark text-sm font-bold">+</button>
