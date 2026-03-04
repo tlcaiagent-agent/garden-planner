@@ -724,6 +724,7 @@ export default function GardenPlanPage() {
                           fontSize: Math.max(14, sz * 0.55),
                           cursor: 'grab',
                           touchAction: 'none',
+                          transform: bed.rotation ? `rotate(${-(bed.rotation)}deg)` : undefined,
                         }}
                         onMouseDown={(e) => handlePlantPointerDown(e, plant, bed.id)}
                         onTouchStart={(e) => handlePlantPointerDown(e, plant, bed.id)}
