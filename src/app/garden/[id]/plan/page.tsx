@@ -86,8 +86,23 @@ export default function GardenPlanPage() {
   const [pendingVarietyId, setPendingVarietyId] = useState<string | null>(null)
   const [showVarietyPicker, setShowVarietyPicker] = useState(false)
   const [seedCardPlant, setSeedCardPlant] = useState<{ plantType: string; varietyId?: string } | null>(null)
+  const [zoom, setZoom] = useState(1)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to center on mount
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (el) {
+      // Canvas is 2800x1800, viewport is smaller — scroll to center
+      el.scrollLeft = (2800 / 2) - (el.clientWidth / 2)
+      el.scrollTop = (1800 / 2) - (el.clientHeight / 2)
+    }
+  }, [])
+
+  const zoomIn = () => setZoom(z => Math.min(2, z + 0.25))
+  const zoomOut = () => setZoom(z => Math.max(0.25, z - 0.25))
+  const zoomReset = () => setZoom(1)
 
   const selectedBed = beds.find(b => b.id === selectedBedId)
 
@@ -105,7 +120,8 @@ export default function GardenPlanPage() {
 
   const canvasXY = (clientX: number, clientY: number) => {
     const rect = canvasRef.current!.getBoundingClientRect()
-    return { x: clientX - rect.left, y: clientY - rect.top }
+    // Account for zoom: screen pixels → canvas pixels
+    return { x: (clientX - rect.left) / zoom, y: (clientY - rect.top) / zoom }
   }
 
   // Lock/unlock scroll on the overflow container when dragging
@@ -820,10 +836,12 @@ export default function GardenPlanPage() {
         </aside>
 
         {/* Canvas area */}
-        <main ref={scrollContainerRef as any} className="flex-1 overflow-auto bg-garden-cream/30 relative">
+        <main className="flex-1 bg-garden-cream/30 relative overflow-hidden">
+          {/* ===== FLOATING OVERLAY (doesn't scroll) ===== */}
+          <div className="absolute inset-0 z-30 pointer-events-none">
 
           {/* Mobile top bar */}
-          <div className="md:hidden absolute top-3 left-3 right-3 z-20 flex gap-2">
+          <div className="md:hidden absolute top-3 left-3 right-3 z-20 flex gap-2 pointer-events-auto">
             <button onClick={() => { setSidebarTab('plants'); setBottomSheetOpen(true) }}
               className="bg-white/90 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-md border border-garden-green/10 min-h-[44px]">
               🌱 Plants
@@ -843,7 +861,7 @@ export default function GardenPlanPage() {
           </div>
 
           {/* Desktop top bar */}
-          <div className="hidden md:flex absolute top-4 left-4 z-10 gap-2">
+          <div className="hidden md:flex absolute top-4 left-4 z-10 gap-2 pointer-events-auto">
             <Link href={`/garden/${gardenId}/calendar`} className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">📅 Calendar</Link>
             <button className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">💾 Save</button>
             <button className="bg-white/80 backdrop-blur-sm text-garden-dark text-sm px-3 py-2 rounded-xl shadow-sm hover:bg-white transition-colors border border-garden-green/10">🔗 Share</button>
@@ -858,7 +876,7 @@ export default function GardenPlanPage() {
           </div>
 
           {/* Compass widget */}
-          <div className="absolute bottom-4 right-4 z-10 bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-16 h-16 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none"
+          <div className="absolute bottom-4 right-4 z-10 bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-16 h-16 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none pointer-events-auto"
             onClick={rotateCompass}
             title={`Garden orientation: North is ${gardenNorthAngle === 0 ? 'up' : `${gardenNorthAngle}° clockwise from up`}`}
           >
@@ -888,9 +906,16 @@ export default function GardenPlanPage() {
             </div>
           </div>
 
+          {/* Zoom buttons */}
+          <div className="absolute bottom-4 left-20 z-10 flex gap-1 pointer-events-auto">
+            <button onClick={zoomOut} className="bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-sm font-bold">−</button>
+            <button onClick={zoomReset} className="bg-white/90 backdrop-blur-sm px-2 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-xs font-mono">{Math.round(zoom * 100)}%</button>
+            <button onClick={zoomIn} className="bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg border border-garden-green/10 shadow-sm flex items-center justify-center text-garden-dark hover:bg-white text-sm font-bold">+</button>
+          </div>
+
           {/* Pending plant banner */}
           {pendingPlantId && !showVarietyPicker && (
-            <div className="absolute top-16 md:top-4 left-1/2 -translate-x-1/2 z-20 bg-garden-green text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
+            <div className="absolute top-16 md:top-4 left-1/2 -translate-x-1/2 z-20 bg-garden-green text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap pointer-events-auto">
               <span>
                 {plantMap.get(pendingPlantId)?.emoji} Tap anywhere to place {plantMap.get(pendingPlantId)?.name}
                 {pendingVarietyId && (() => {
@@ -925,7 +950,7 @@ export default function GardenPlanPage() {
             }
 
             return (
-              <div className="hidden md:block absolute top-4 right-4 z-10 w-80 shadow-xl border-2 border-garden-green/20 overflow-hidden rounded-2xl bg-white">
+              <div className="hidden md:block absolute top-4 right-4 z-10 w-80 pointer-events-auto shadow-xl border-2 border-garden-green/20 overflow-hidden rounded-2xl bg-white">
                 {/* Seed packet header */}
                 <div 
                   className="px-4 py-3 text-white relative"
@@ -1008,7 +1033,7 @@ export default function GardenPlanPage() {
 
           {/* Loose plant seed packet info */}
           {selectedLoosePlantId && selectedLoosePlantData && (
-            <div className="hidden md:block absolute top-4 right-4 z-10 w-80 shadow-xl border-2 border-garden-green/20 overflow-hidden rounded-2xl bg-white">
+            <div className="hidden md:block absolute top-4 right-4 z-10 w-80 pointer-events-auto shadow-xl border-2 border-garden-green/20 overflow-hidden rounded-2xl bg-white">
               {(() => {
                 const plant = loosePlants.find(p => p.id === selectedLoosePlantId)
                 const variety = plant?.varietyId ? selectedLoosePlantData.varieties?.find(v => v.id === plant.varietyId) : null
@@ -1094,7 +1119,7 @@ export default function GardenPlanPage() {
 
           {/* Bed info */}
           {selectedBedId && !selectedPlantId && selectedBed && (
-            <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
+            <div className="hidden md:block absolute top-4 right-4 z-10 pointer-events-auto bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
               <div className="text-sm font-semibold text-garden-dark mb-1">{selectedBed.name}</div>
               <div className="text-xs text-garden-dark/60 mb-3">
                 {pxToFeetInches(selectedBed.width)} × {pxToFeetInches(selectedBed.height)}
@@ -1117,7 +1142,7 @@ export default function GardenPlanPage() {
             const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
             if (!selectedShade) return null
             return (
-              <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
+              <div className="hidden md:block absolute top-4 right-4 z-10 pointer-events-auto bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
                 <div className="text-sm font-semibold text-garden-dark mb-1 flex items-center gap-2">
                   <span>{selectedShade.type === 'partial' ? '⛅' : '🌑'}</span>
                   {selectedShade.type === 'partial' ? 'Partial Shade' : 'Full Shade'}
@@ -1138,7 +1163,7 @@ export default function GardenPlanPage() {
             if (!plantData || !plant) return null
             const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
             return (
-              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
                     <span className="text-2xl">{plantData.emoji}</span>
@@ -1161,7 +1186,7 @@ export default function GardenPlanPage() {
             if (!plantData || !plant) return null
             const variety = plant.varietyId ? plantData.varieties?.find(v => v.id === plant.varietyId) : null
             return (
-              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2" onClick={() => openSeedCard(plant.plantType, plant.varietyId)}>
                     <span className="text-2xl">{plantData.emoji}</span>
@@ -1179,7 +1204,7 @@ export default function GardenPlanPage() {
 
           {/* Mobile bottom info bar for beds */}
           {selectedBedId && !selectedPlantId && selectedBed && (
-            <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+            <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold text-garden-dark">{selectedBed.name}</div>
@@ -1202,7 +1227,7 @@ export default function GardenPlanPage() {
             const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
             if (!selectedShade) return null
             return (
-              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white border-t border-garden-green/20 p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-semibold text-garden-dark flex items-center gap-2">
@@ -1221,14 +1246,21 @@ export default function GardenPlanPage() {
             )
           })()}
 
+          </div>{/* end floating overlay */}
+
+          {/* ===== SCROLL CONTAINER ===== */}
+          <div ref={scrollContainerRef} className="absolute inset-0 overflow-auto">
+
           {/* ====== THE CANVAS ====== */}
           <div ref={canvasRef}
             className="relative select-none"
             style={{
-              minWidth: '1400px',
-              minHeight: '900px',
+              width: '2800px',
+              height: '1800px',
               backgroundImage: 'radial-gradient(circle, #4A7C2E15 1px, transparent 1px)',
-              backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+              backgroundSize: `${GRID_SIZE * zoom}px ${GRID_SIZE * zoom}px`,
+              transform: `scale(${zoom})`,
+              transformOrigin: '0 0',
               touchAction: dragState ? 'none' : 'auto',
             }}
             onClick={handleCanvasClick}
@@ -1422,6 +1454,7 @@ export default function GardenPlanPage() {
               </div>
             )}
           </div>
+          </div>{/* end scroll container */}
         </main>
       </div>
 
