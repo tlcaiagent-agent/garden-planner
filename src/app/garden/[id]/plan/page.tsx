@@ -44,10 +44,20 @@ const getPlantSize = (spacing: number) => Math.max(20, Math.min(80, spacing * 1.
 
 type BedShape = 'rectangle' | 'l-shape' | 'circle' | 'raised' | 'pot'
 
+interface ShadeZone {
+  id: string
+  type: 'partial' | 'full'
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 interface DragState {
-  type: 'plant-move' | 'loose-plant-move' | 'bed-move' | 'bed-resize' | 'bed-rotate'
+  type: 'plant-move' | 'loose-plant-move' | 'bed-move' | 'bed-resize' | 'bed-rotate' | 'shade-move' | 'shade-resize'
   plantId?: string
   bedId?: string
+  shadeId?: string
   offsetX: number
   offsetY: number
   startRotation?: number
@@ -61,9 +71,12 @@ export default function GardenPlanPage() {
 
   const [beds, setBeds] = useState<GardenBed[]>(garden.beds)
   const [loosePlants, setLoosePlants] = useState<PlacedPlant[]>(garden.loosePlants || [])
+  const [shadeZones, setShadeZones] = useState<ShadeZone[]>([])
+  const [gardenNorthAngle, setGardenNorthAngle] = useState<number>(0) // 0 = north is up
   const [selectedBedId, setSelectedBedId] = useState<string | null>(null)
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
   const [selectedLoosePlantId, setSelectedLoosePlantId] = useState<string | null>(null)
+  const [selectedShadeId, setSelectedShadeId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const [showCompanion, setShowCompanion] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<'plants' | 'beds' | 'list'>('plants')
@@ -157,6 +170,36 @@ export default function GardenPlanPage() {
     ))
   }
 
+  const addShadeZone = (type: 'partial' | 'full') => {
+    // Place shade zone in visible area
+    const el = scrollContainerRef.current
+    const scrollX = el ? el.scrollLeft : 0
+    const scrollY = el ? el.scrollTop : 0
+    const newZone: ShadeZone = {
+      id: `shade-${Date.now()}`,
+      type,
+      x: snap(scrollX + 50),
+      y: snap(scrollY + 50),
+      width: 200,
+      height: 160,
+    }
+    setShadeZones(prev => [...prev, newZone])
+    setSelectedShadeId(newZone.id)
+    setSelectedBedId(null)
+    setSelectedPlantId(null)
+    setSelectedLoosePlantId(null)
+    setBottomSheetOpen(false)
+  }
+
+  const deleteShadeZone = (shadeId: string) => {
+    setShadeZones(prev => prev.filter(s => s.id !== shadeId))
+    if (selectedShadeId === shadeId) setSelectedShadeId(null)
+  }
+
+  const rotateCompass = () => {
+    setGardenNorthAngle(prev => (prev + 45) % 360)
+  }
+
   // --- Mouse/touch handlers ---
 
   const handleCanvasClick = (e: React.MouseEvent) => {
@@ -208,6 +251,7 @@ export default function GardenPlanPage() {
     setSelectedBedId(null)
     setSelectedPlantId(null)
     setSelectedLoosePlantId(null)
+    setSelectedShadeId(null)
   }
 
   // Also handle clicks on beds for placing plants
@@ -244,6 +288,7 @@ export default function GardenPlanPage() {
     setSelectedBedId(bed.id)
     setSelectedPlantId(null)
     setSelectedLoosePlantId(null)
+    setSelectedShadeId(null)
     startDrag({ type: 'bed-move', bedId: bed.id, offsetX: x - bed.x, offsetY: y - bed.y })
   }
 
@@ -274,6 +319,7 @@ export default function GardenPlanPage() {
     setSelectedPlantId(plant.id)
     setSelectedBedId(bedId)
     setSelectedLoosePlantId(null)
+    setSelectedShadeId(null)
     startDrag({
       type: 'plant-move', plantId: plant.id, bedId,
       offsetX: x - bed.x - plant.x, offsetY: y - bed.y - plant.y,
@@ -287,10 +333,28 @@ export default function GardenPlanPage() {
     setSelectedLoosePlantId(plant.id)
     setSelectedPlantId(null)
     setSelectedBedId(null)
+    setSelectedShadeId(null)
     startDrag({
       type: 'loose-plant-move', plantId: plant.id,
       offsetX: x - plant.x, offsetY: y - plant.y,
     })
+  }
+
+  const handleShadePointerDown = (e: React.MouseEvent | React.TouchEvent, shade: ShadeZone) => {
+    if (pendingPlantId) return // don't start shade drag if placing a plant
+    e.stopPropagation()
+    const client = 'touches' in e ? e.touches[0] : e
+    const { x, y } = canvasXY(client.clientX, client.clientY)
+    setSelectedShadeId(shade.id)
+    setSelectedBedId(null)
+    setSelectedPlantId(null)
+    setSelectedLoosePlantId(null)
+    startDrag({ type: 'shade-move', shadeId: shade.id, offsetX: x - shade.x, offsetY: y - shade.y })
+  }
+
+  const handleShadeResizeStart = (e: React.MouseEvent | React.TouchEvent, shade: ShadeZone) => {
+    e.stopPropagation()
+    startDrag({ type: 'shade-resize', shadeId: shade.id, offsetX: 0, offsetY: 0 })
   }
 
   // HTML5 drag from desktop sidebar
@@ -397,6 +461,17 @@ export default function GardenPlanPage() {
             ? { ...p, x: snap(x - dragState.offsetX), y: snap(y - dragState.offsetY) }
             : p
         ))
+      } else if (dragState.type === 'shade-move' && dragState.shadeId) {
+        setShadeZones(prev => prev.map(s =>
+          s.id === dragState.shadeId ? { ...s, x: snap(x - dragState.offsetX), y: snap(y - dragState.offsetY) } : s
+        ))
+      } else if (dragState.type === 'shade-resize' && dragState.shadeId) {
+        setShadeZones(prev => prev.map(s => {
+          if (s.id !== dragState.shadeId) return s
+          const newW = snap(Math.max(40, x - s.x))
+          const newH = snap(Math.max(40, y - s.y))
+          return { ...s, width: newW, height: newH }
+        }))
       }
     }
 
@@ -488,7 +563,7 @@ export default function GardenPlanPage() {
       window.removeEventListener('touchmove', onMove)
       window.removeEventListener('touchend', onUp)
     }
-  }, [dragState, beds, loosePlants])
+  }, [dragState, beds, loosePlants, shadeZones])
 
   const filteredPlants = filterCategory === 'all'
     ? plantCatalog
@@ -673,6 +748,22 @@ export default function GardenPlanPage() {
           </button>
         ))}
       </div>
+      <div className="pt-3 border-t border-garden-green/10">
+        <p className="text-xs text-garden-dark/50 mb-2">Add shade zones:</p>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <button onClick={() => addShadeZone('partial')}
+            className="flex items-center gap-2 p-3 rounded-xl bg-yellow-50 hover:bg-yellow-100 transition-colors text-left border border-yellow-200">
+            <span className="text-lg">⛅</span>
+            <span className="text-sm font-semibold text-yellow-800">Partial Shade</span>
+          </button>
+          <button onClick={() => addShadeZone('full')}
+            className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left border border-gray-300">
+            <span className="text-lg">🌑</span>
+            <span className="text-sm font-semibold text-gray-800">Full Shade</span>
+          </button>
+        </div>
+      </div>
+      
       {beds.length > 0 && (
         <div className="pt-3 border-t border-garden-green/10">
           <p className="text-xs text-garden-dark/50 mb-2">Your beds:</p>
@@ -765,6 +856,37 @@ export default function GardenPlanPage() {
             <div className="flex items-center gap-2">
               <div className="w-10 h-0.5 bg-garden-dark"></div>
               <span className="text-xs text-garden-dark/70 font-mono">1 ft</span>
+            </div>
+          </div>
+
+          {/* Compass widget */}
+          <div className="absolute bottom-4 right-4 z-10 bg-white/90 backdrop-blur-sm rounded-full border border-garden-green/10 shadow-sm w-16 h-16 flex items-center justify-center cursor-pointer hover:bg-white transition-colors select-none"
+            onClick={rotateCompass}
+            title={`Garden orientation: North is ${gardenNorthAngle === 0 ? 'up' : `${gardenNorthAngle}° clockwise from up`}`}
+          >
+            <div className="relative w-12 h-12" style={{ transform: `rotate(${-gardenNorthAngle}deg)` }}>
+              {/* Compass face */}
+              <div className="absolute inset-0 rounded-full border border-gray-300">
+                {/* North marker */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 text-xs font-bold text-red-600">N</div>
+                {/* South marker */}
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 text-xs font-semibold text-gray-600">S</div>
+                {/* East marker */}
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 text-xs font-semibold text-gray-600">E</div>
+                {/* West marker */}
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 text-xs font-semibold text-gray-600">W</div>
+                
+                {/* Compass needle */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-5 bg-red-600 origin-bottom"
+                  style={{ transform: 'translateY(-50%)' }}
+                ></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-3 bg-gray-400 origin-top"
+                  style={{ transform: 'translateY(50%) rotate(180deg)' }}
+                ></div>
+                
+                {/* Center dot */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-gray-600 rounded-full"></div>
+              </div>
             </div>
           </div>
 
@@ -992,6 +1114,24 @@ export default function GardenPlanPage() {
             </div>
           )}
 
+          {/* Shade zone info */}
+          {selectedShadeId && (() => {
+            const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
+            if (!selectedShade) return null
+            return (
+              <div className="hidden md:block absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-sm rounded-2xl p-4 w-64 shadow-lg border border-garden-green/10">
+                <div className="text-sm font-semibold text-garden-dark mb-1 flex items-center gap-2">
+                  <span>{selectedShade.type === 'partial' ? '⛅' : '🌑'}</span>
+                  {selectedShade.type === 'partial' ? 'Partial Shade' : 'Full Shade'}
+                </div>
+                <div className="text-xs text-garden-dark/60 mb-3">
+                  {pxToFeetInches(selectedShade.width)} × {pxToFeetInches(selectedShade.height)}
+                </div>
+                <button onClick={() => deleteShadeZone(selectedShadeId)} className="text-red-400 hover:text-red-600 text-xs">Delete shade zone</button>
+              </div>
+            )
+          })()}
+
           {/* Mobile bottom info bar for beds */}
           {selectedBedId && !selectedPlantId && selectedBed && (
             <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
@@ -1012,6 +1152,30 @@ export default function GardenPlanPage() {
             </div>
           )}
 
+          {/* Mobile bottom info bar for shade zones */}
+          {selectedShadeId && (() => {
+            const selectedShade = shadeZones.find(s => s.id === selectedShadeId)
+            if (!selectedShade) return null
+            return (
+              <div className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white border-t border-garden-green/20 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-garden-dark flex items-center gap-2">
+                      <span>{selectedShade.type === 'partial' ? '⛅' : '🌑'}</span>
+                      {selectedShade.type === 'partial' ? 'Partial Shade' : 'Full Shade'}
+                    </div>
+                    <div className="text-xs text-garden-dark/60">
+                      {pxToFeetInches(selectedShade.width)} × {pxToFeetInches(selectedShade.height)}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => deleteShadeZone(selectedShadeId)} className="bg-red-50 text-red-500 w-10 h-10 rounded-lg flex items-center justify-center">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* ====== THE CANVAS ====== */}
           <div ref={canvasRef}
             className="relative select-none"
@@ -1026,6 +1190,58 @@ export default function GardenPlanPage() {
             onDragOver={handleCanvasDragOver}
             onDrop={handleCanvasDrop}
           >
+            {/* Shade zones (render behind everything) */}
+            {shadeZones.map(shade => {
+              const isSelected = selectedShadeId === shade.id
+              const shadePattern = shade.type === 'partial' 
+                ? 'repeating-linear-gradient(45deg, rgba(251, 191, 36, 0.3) 0px, rgba(251, 191, 36, 0.3) 4px, transparent 4px, transparent 8px)'
+                : 'repeating-linear-gradient(45deg, rgba(75, 85, 99, 0.4) 0px, rgba(75, 85, 99, 0.4) 4px, transparent 4px, transparent 8px), repeating-linear-gradient(-45deg, rgba(75, 85, 99, 0.4) 0px, rgba(75, 85, 99, 0.4) 4px, transparent 4px, transparent 8px)'
+              
+              return (
+                <div key={shade.id}
+                  className={`absolute transition-shadow z-0 ${isSelected ? 'ring-2 ring-blue-400 shadow-md' : 'hover:shadow-sm'}`}
+                  style={{
+                    left: shade.x, top: shade.y,
+                    width: shade.width, height: shade.height,
+                    background: shadePattern,
+                    borderRadius: '8px',
+                    cursor: pendingPlantId ? 'crosshair' : (dragState?.type === 'shade-move' && dragState.shadeId === shade.id ? 'grabbing' : 'grab'),
+                    touchAction: 'none',
+                  }}
+                  onMouseDown={(e) => handleShadePointerDown(e, shade)}
+                  onTouchStart={(e) => handleShadePointerDown(e, shade)}
+                >
+                  {/* Label */}
+                  <div className="absolute -top-6 left-1 text-xs font-semibold text-gray-700 whitespace-nowrap pointer-events-none flex items-center gap-1">
+                    <span>{shade.type === 'partial' ? '⛅' : '🌑'}</span>
+                    {shade.type === 'partial' ? 'Partial Shade' : 'Full Shade'}
+                  </div>
+
+                  {/* Measurements (selected only) */}
+                  {isSelected && (
+                    <>
+                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-mono text-garden-dark/70 bg-white/90 px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
+                        {pxToFeetInches(shade.width)}
+                      </div>
+                      <div className="absolute top-1/2 -right-5 translate-x-full -translate-y-1/2 text-[10px] font-mono text-garden-dark/70 bg-white/90 px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
+                        {pxToFeetInches(shade.height)}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Resize handle */}
+                  {isSelected && (
+                    <div className="absolute -bottom-3 -right-3 w-6 h-6 bg-blue-500 rounded-full cursor-se-resize opacity-70 hover:opacity-100 shadow-sm flex items-center justify-center"
+                      style={{ touchAction: 'none' }}
+                      onMouseDown={(e) => handleShadeResizeStart(e, shade)}
+                      onTouchStart={(e) => handleShadeResizeStart(e, shade)}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" className="text-white"><path d="M8 2L2 8M8 5L5 8M8 8L8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
             {/* Loose plants (not in any bed) */}
             {loosePlants.map(plant => {
               const plantData = plantMap.get(plant.plantType)
