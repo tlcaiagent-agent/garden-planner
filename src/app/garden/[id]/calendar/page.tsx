@@ -15,7 +15,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 // ── Types ──
-type TaskType = 'start-indoors' | 'direct-sow' | 'transplant' | 'harvest' | 'fertilize' | 'prune'
+type TaskType = 'planting-window' | 'harvest' | 'fertilize' | 'prune'
 type Tab = 'today' | 'timeline' | 'log'
 
 interface CalendarTask {
@@ -36,9 +36,7 @@ interface SingleTask {
 }
 
 const taskMeta: Record<TaskType, { color: string; bg: string; text: string; border: string; label: string; emoji: string; barColor: string }> = {
-  'start-indoors': { color: 'purple', bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', label: 'Start Indoors', emoji: '🏠', barColor: '#9333ea' },
-  'direct-sow':    { color: 'green',  bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Direct Sow',   emoji: '🌰', barColor: '#16a34a' },
-  'transplant':    { color: 'green',  bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Transplant',   emoji: '🌱', barColor: '#059669' },
+  'planting-window': { color: 'green', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Planting Window', emoji: '🌱', barColor: '#16a34a' },
   'harvest':       { color: 'orange', bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  label: 'Harvest',      emoji: '🧺', barColor: '#ea580c' },
   'fertilize':     { color: 'blue',   bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    label: 'Fertilize',    emoji: '💧', barColor: '#2563eb' },
   'prune':         { color: 'blue',   bg: 'bg-sky-50',     text: 'text-sky-700',     border: 'border-sky-200',     label: 'Prune',        emoji: '✂️', barColor: '#0284c7' },
@@ -62,24 +60,48 @@ function formatDateShort(d: Date): string { return d.toLocaleDateString('en-US',
 function startOfWeek(d: Date): Date { const r = new Date(d); r.setDate(r.getDate() - r.getDay()); return startOfDay(r) }
 function endOfWeek(d: Date): Date { return addDays(startOfWeek(d), 6) }
 
+// ── Planting advice helper ──
+function getPlantingAdvice(plant: PlantData, today: Date): string {
+  const daysToFrost = daysBetween(today, LAST_FROST)
+  const pastFrost = today >= LAST_FROST
+
+  if (!pastFrost && plant.seedIndoors) {
+    return `🌡️ Start indoors for a head start — ${Math.ceil(daysToFrost / 7)} weeks until last frost`
+  }
+  if (pastFrost && (plant.directSow || plant.transplant)) {
+    return `☀️ Safe to plant outdoors — past last frost date`
+  }
+  if (!pastFrost && plant.directSow && plant.directSow[0] <= 0) {
+    return `Can direct sow now (cold-hardy) or start indoors`
+  }
+  return `🌱 Planting window open`
+}
+
 // ── Task generation (single plant) ──
 function generateSingleTasks(plant: PlantData): SingleTask[] {
   const tasks: SingleTask[] = []
 
+  // Compute merged planting window
+  const windowStarts: Date[] = []
+  const windowEnds: Date[] = []
+
   if (plant.seedIndoors) {
-    const start = addWeeks(LAST_FROST, -plant.seedIndoors[1])
-    const end = addWeeks(LAST_FROST, -plant.seedIndoors[0])
-    tasks.push({ plant, type: 'start-indoors', startDate: start, endDate: end })
+    windowStarts.push(addWeeks(LAST_FROST, -plant.seedIndoors[1]))
+    windowEnds.push(addWeeks(LAST_FROST, -plant.seedIndoors[0]))
   }
   if (plant.directSow) {
-    const start = addWeeks(LAST_FROST, plant.directSow[0])
-    const end = addWeeks(LAST_FROST, plant.directSow[1])
-    tasks.push({ plant, type: 'direct-sow', startDate: start, endDate: end })
+    windowStarts.push(addWeeks(LAST_FROST, plant.directSow[0]))
+    windowEnds.push(addWeeks(LAST_FROST, plant.directSow[1]))
   }
   if (plant.transplant) {
-    const start = addWeeks(LAST_FROST, plant.transplant[0])
-    const end = addWeeks(LAST_FROST, plant.transplant[1])
-    tasks.push({ plant, type: 'transplant', startDate: start, endDate: end })
+    windowStarts.push(addWeeks(LAST_FROST, plant.transplant[0]))
+    windowEnds.push(addWeeks(LAST_FROST, plant.transplant[1]))
+  }
+
+  if (windowStarts.length > 0) {
+    const earliest = new Date(Math.min(...windowStarts.map(d => d.getTime())))
+    const latest = new Date(Math.max(...windowEnds.map(d => d.getTime())))
+    tasks.push({ plant, type: 'planting-window', startDate: earliest, endDate: latest })
   }
 
   const plantingDate = plant.transplant ? addWeeks(LAST_FROST, plant.transplant[0])
@@ -132,7 +154,6 @@ function groupTasks(singleTasks: SingleTask[]): CalendarTask[] {
     const first = tasks[0]
     const plants = tasks.map(t => t.plant)
     const plantIds = plants.map(p => p.id)
-    const names = plants.map(p => p.name).join(', ')
     const meta = taskMeta[first.type]
     grouped.push({
       id: `task-${idx++}`,
@@ -142,7 +163,7 @@ function groupTasks(singleTasks: SingleTask[]): CalendarTask[] {
       startDate: first.startDate,
       endDate: first.endDate,
       description: plants.length > 1
-        ? `${meta.label}: ${names}`
+        ? `${meta.label}: ${plants.map(p => p.name).join(', ')}`
         : `${meta.label} ${plants[0].name}`,
     })
   }
@@ -242,9 +263,7 @@ export default function CalendarPage() {
     const weekTasks = relevantTasks.filter(t => t.urgency === 'this-week' || t.urgency === 'due-today')
     const byAction = new Map<string, { emoji: string; label: string; names: string[] }>()
     const actionGroups: [string, string, string][] = [
-      ['start-indoors', '🏠', 'Start indoors'],
-      ['direct-sow', '🌱', 'Plant/sow'],
-      ['transplant', '🌱', 'Transplant'],
+      ['planting-window', '🌱', 'Planting window'],
       ['harvest', '🧺', 'Ready to harvest'],
       ['fertilize', '💧', 'Fertilize'],
       ['prune', '✂️', 'Prune'],
@@ -263,9 +282,7 @@ export default function CalendarPage() {
     const weekTasks = relevantTasks.filter(t => t.urgency === 'next-week')
     const byAction = new Map<string, { emoji: string; label: string; names: string[] }>()
     const actionGroups: [string, string, string][] = [
-      ['start-indoors', '🏠', 'Start indoors'],
-      ['direct-sow', '🌱', 'Plant/sow'],
-      ['transplant', '🌱', 'Transplant'],
+      ['planting-window', '🌱', 'Planting window'],
       ['harvest', '🧺', 'Ready to harvest'],
       ['fertilize', '💧', 'Fertilize'],
       ['prune', '✂️', 'Prune'],
@@ -289,7 +306,7 @@ export default function CalendarPage() {
     })
     // Auto-create log entry
     const catMap: Partial<Record<TaskType, LogCategory>> = {
-      'start-indoors': 'planted', 'direct-sow': 'planted', transplant: 'planted',
+      'planting-window': 'planted',
       harvest: 'harvested', fertilize: 'fertilized',
     }
     const cat = catMap[task.type] || 'note'
@@ -445,6 +462,9 @@ export default function CalendarPage() {
                     const meta = taskMeta[task.type]
                     const urgency = getUrgency(task, TODAY)
                     const uStyle = urgencyStyle[urgency]
+                    const advice = task.type === 'planting-window' && task.plants.length > 0
+                      ? getPlantingAdvice(task.plants[0], TODAY)
+                      : null
                     return (
                       <div key={task.id} className={`flex items-start gap-3 p-3 rounded-xl border ${uStyle.border} bg-white transition-all`}>
                         <div className="flex-1 min-w-0">
@@ -462,7 +482,11 @@ export default function CalendarPage() {
                             ))}
                             <span className="text-sm font-semibold text-garden-dark">{task.plants.map(p => p.name).join(', ')}</span>
                           </div>
-                          <p className="text-xs text-garden-dark/50">{formatDateShort(task.startDate)} – {formatDateShort(task.endDate)}</p>
+                          {advice ? (
+                            <p className="text-xs text-emerald-600 font-medium">{advice}</p>
+                          ) : (
+                            <p className="text-xs text-garden-dark/50">{formatDateShort(task.startDate)} – {formatDateShort(task.endDate)}</p>
+                          )}
                         </div>
                         <button onClick={() => completeTask(task)}
                           className="shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-garden-green/10 hover:bg-garden-green/20 text-garden-green font-bold text-sm transition-colors active:scale-95">
@@ -592,8 +616,7 @@ export default function CalendarPage() {
           <div className="space-y-4">
             {/* Legend */}
             <div className="flex flex-wrap gap-3 text-xs text-garden-dark/60">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500" /> Start Indoors</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500" /> Sow/Transplant</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500" /> Planting Window</span>
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500" /> Harvest</span>
               <span className="flex items-center gap-1"><span className="w-0.5 h-3 bg-red-500" /> Today</span>
               <span className="flex items-center gap-1"><span className="w-0.5 h-3 bg-blue-400 border border-dashed" /> Frost dates</span>
@@ -665,6 +688,9 @@ export default function CalendarPage() {
                   <div className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${taskMeta[timelinePopup.type].bg} ${taskMeta[timelinePopup.type].text}`}>
                     {taskMeta[timelinePopup.type].emoji} {taskMeta[timelinePopup.type].label}
                   </div>
+                  {timelinePopup.type === 'planting-window' && (
+                    <p className="text-sm text-emerald-600 font-medium mt-2">{getPlantingAdvice(timelinePopup.plant, TODAY)}</p>
+                  )}
                   <p className="text-sm text-garden-dark/60 mt-2">{formatDateShort(timelinePopup.start)} – {formatDateShort(timelinePopup.end)}</p>
                   <p className="text-xs text-garden-dark/40 mt-1">{timelinePopup.plant.daysToMaturity} days to maturity • {timelinePopup.plant.sunNeeds} sun • {timelinePopup.plant.waterNeeds} water</p>
                 </div>
