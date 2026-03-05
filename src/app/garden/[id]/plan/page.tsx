@@ -101,9 +101,23 @@ export default function GardenPlanPage() {
     }
   }, [])
 
-  const zoomIn = () => setZoom(z => Math.min(2, z + 0.25))
-  const zoomOut = () => setZoom(z => Math.max(0.25, z - 0.25))
-  const zoomReset = () => setZoom(1)
+  const zoomTo = (newZoom: number) => {
+    const el = scrollContainerRef.current
+    if (!el) { setZoom(newZoom); return }
+    const oldZoom = zoom
+    // Viewport center in canvas coords
+    const cx = (el.scrollLeft + el.clientWidth / 2) / oldZoom
+    const cy = (el.scrollTop + el.clientHeight / 2) / oldZoom
+    setZoom(newZoom)
+    // After React renders, adjust scroll so same canvas point stays centered
+    requestAnimationFrame(() => {
+      el.scrollLeft = cx * newZoom - el.clientWidth / 2
+      el.scrollTop = cy * newZoom - el.clientHeight / 2
+    })
+  }
+  const zoomIn = () => zoomTo(Math.min(2, zoom + 0.25))
+  const zoomOut = () => zoomTo(Math.max(0.25, zoom - 0.25))
+  const zoomReset = () => zoomTo(1)
 
   const selectedBed = beds.find(b => b.id === selectedBedId)
 
