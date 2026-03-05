@@ -215,6 +215,7 @@ export default function CalendarPage() {
   const [timelinePopup, setTimelinePopup] = useState<{ plant: PlantData; type: TaskType; start: Date; end: Date } | null>(null)
   const [expandThisWeek, setExpandThisWeek] = useState(true)
   const [expandNextWeek, setExpandNextWeek] = useState(false)
+  const [expandedTips, setExpandedTips] = useState<Set<string>>(new Set())
   const timelineRef = useRef<HTMLDivElement>(null)
 
   const gardenPlantIds = useMemo(() => {
@@ -487,6 +488,29 @@ export default function CalendarPage() {
                           ) : (
                             <p className="text-xs text-garden-dark/50">{formatDateShort(task.startDate)} – {formatDateShort(task.endDate)}</p>
                           )}
+                          {task.type === 'planting-window' && task.plants.some(p => p.plantingTip) && (
+                            <div className="mt-1.5">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setExpandedTips(prev => { const next = new Set(prev); next.has(task.id) ? next.delete(task.id) : next.add(task.id); return next }) }}
+                                className="text-xs text-garden-dark/40 hover:text-garden-dark/60 transition-colors font-medium"
+                              >
+                                {expandedTips.has(task.id) ? 'Hide tips ▾' : 'Show tips ▸'}
+                              </button>
+                              {expandedTips.has(task.id) && (
+                                <div className="mt-1.5 space-y-2">
+                                  {task.plants.filter(p => p.plantingTip).map(p => (
+                                    <div key={p.id} className="bg-garden-cream/50 rounded-lg p-2.5 text-xs space-y-0.5">
+                                      {task.plants.length > 1 && <p className="font-semibold text-garden-dark">{p.emoji} {p.name}</p>}
+                                      {p.soilTempMin != null && p.soilTempOptimal && <p className="text-garden-dark/60">🌡️ Soil temp: Min {p.soilTempMin}°F, optimal {p.soilTempOptimal[0]}–{p.soilTempOptimal[1]}°F</p>}
+                                      {p.daysToGermination && <p className="text-garden-dark/60">🌱 Germination: {p.daysToGermination[0]}–{p.daysToGermination[1]} days</p>}
+                                      {p.plantingDepth && <p className="text-garden-dark/60">📏 Planting depth: {p.plantingDepth}</p>}
+                                      {p.plantingTip && <p className="text-garden-dark/70 font-medium">💡 {p.plantingTip}</p>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <button onClick={() => completeTask(task)}
                           className="shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-garden-green/10 hover:bg-garden-green/20 text-garden-green font-bold text-sm transition-colors active:scale-95">
@@ -693,6 +717,14 @@ export default function CalendarPage() {
                   )}
                   <p className="text-sm text-garden-dark/60 mt-2">{formatDateShort(timelinePopup.start)} – {formatDateShort(timelinePopup.end)}</p>
                   <p className="text-xs text-garden-dark/40 mt-1">{timelinePopup.plant.daysToMaturity} days to maturity • {timelinePopup.plant.sunNeeds} sun • {timelinePopup.plant.waterNeeds} water</p>
+                  {timelinePopup.type === 'planting-window' && timelinePopup.plant.plantingTip && (
+                    <div className="mt-2 bg-garden-cream/50 rounded-lg p-2.5 text-xs space-y-0.5">
+                      {timelinePopup.plant.soilTempMin != null && timelinePopup.plant.soilTempOptimal && <p className="text-garden-dark/60">🌡️ Soil temp: Min {timelinePopup.plant.soilTempMin}°F, optimal {timelinePopup.plant.soilTempOptimal[0]}–{timelinePopup.plant.soilTempOptimal[1]}°F</p>}
+                      {timelinePopup.plant.daysToGermination && <p className="text-garden-dark/60">🌱 Germination: {timelinePopup.plant.daysToGermination[0]}–{timelinePopup.plant.daysToGermination[1]} days</p>}
+                      {timelinePopup.plant.plantingDepth && <p className="text-garden-dark/60">📏 Planting depth: {timelinePopup.plant.plantingDepth}</p>}
+                      <p className="text-garden-dark/70 font-medium">💡 {timelinePopup.plant.plantingTip}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
