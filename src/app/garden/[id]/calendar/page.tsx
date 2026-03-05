@@ -106,8 +106,8 @@ function generateSingleTasks(plant: PlantData): SingleTask[] {
     tasks.push({ plant, type: 'planting-window', startDate: earliest, endDate: latest })
   }
 
-  const plantingDate = plant.transplant ? addWeeks(LAST_FROST, plant.transplant[0])
-    : plant.directSow ? addWeeks(LAST_FROST, plant.directSow[0]) : LAST_FROST
+  // Harvest based on "if planted today"
+  const plantingDate = TODAY
   const harvestStart = addDays(plantingDate, plant.daysToHarvest[0])
   const harvestEnd = addDays(plantingDate, plant.daysToHarvest[1])
   if (harvestStart < FIRST_FROST) {
@@ -115,7 +115,7 @@ function generateSingleTasks(plant: PlantData): SingleTask[] {
   }
 
   if (plant.fertilizeIntervalWeeks) {
-    const growStart = plant.transplant ? addWeeks(LAST_FROST, plant.transplant[0]) : plant.directSow ? addWeeks(LAST_FROST, plant.directSow[0]) : LAST_FROST
+    const growStart = TODAY
     let fertDate = addWeeks(growStart, plant.fertilizeIntervalWeeks)
     let count = 0
     while (fertDate < FIRST_FROST && count < 8) {
