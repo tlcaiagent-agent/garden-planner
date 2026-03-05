@@ -7,7 +7,8 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
 const GRID_SIZE = 20
-const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE
+const SNAP_SIZE = 5
+const snap = (v: number) => Math.round(v / SNAP_SIZE) * SNAP_SIZE
 
 // Rotate a point around a center by -angle (to get local coords of a rotated bed)
 const rotatePoint = (px: number, py: number, cx: number, cy: number, angleDeg: number) => {
