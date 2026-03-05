@@ -84,6 +84,7 @@ export default function GardenPlanPage() {
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [bottomSheetOpen, setBottomSheetOpen] = useState(false)
   const [pendingPlantId, setPendingPlantId] = useState<string | null>(null)
+  const [pendingBedShape, setPendingBedShape] = useState<BedShape | null>(null)
   const [pendingVarietyId, setPendingVarietyId] = useState<string | null>(null)
   const [showVarietyPicker, setShowVarietyPicker] = useState(false)
   const [seedCardPlant, setSeedCardPlant] = useState<{ plantType: string; varietyId?: string } | null>(null)
@@ -158,18 +159,24 @@ export default function GardenPlanPage() {
   }, [dragState])
 
   const addBed = (shape: BedShape) => {
-    // Place bed in visible area
-    const el = scrollContainerRef.current
-    const scrollX = el ? el.scrollLeft : 0
-    const scrollY = el ? el.scrollTop : 0
+    // Set pending — bed will be placed on next canvas click
+    setPendingBedShape(shape)
+    setPendingPlantId(null)
+    setPendingVarietyId(null)
+    setBottomSheetOpen(false)
+  }
+
+  const placeBedAt = (x: number, y: number, shape: BedShape) => {
+    const w = shape === 'circle' || shape === 'pot' ? (shape === 'pot' ? 40 : 160) : 260
+    const h = shape === 'circle' || shape === 'pot' ? (shape === 'pot' ? 40 : 160) : 160
     const newBed: GardenBed = {
       id: `bed-${Date.now()}`,
       name: `New ${shape} bed`,
       shape,
-      x: snap(scrollX + 100),
-      y: snap(scrollY + 100),
-      width: shape === 'circle' || shape === 'pot' ? (shape === 'pot' ? 40 : 160) : 260,
-      height: shape === 'circle' || shape === 'pot' ? (shape === 'pot' ? 40 : 160) : 160,
+      x: snap(x - w / 2),
+      y: snap(y - h / 2),
+      width: w,
+      height: h,
       rotation: 0,
       plants: [],
     }
@@ -177,7 +184,6 @@ export default function GardenPlanPage() {
     setSelectedBedId(newBed.id)
     setSelectedPlantId(null)
     setSelectedLoosePlantId(null)
-    setBottomSheetOpen(false)
   }
 
   const deleteBed = (bedId: string) => {
@@ -236,6 +242,13 @@ export default function GardenPlanPage() {
   const handleCanvasClick = (e: React.MouseEvent) => {
     // Only fire on the canvas background itself
     if (e.target !== canvasRef.current) return
+
+    if (pendingBedShape) {
+      const { x, y } = canvasXY(e.clientX, e.clientY)
+      placeBedAt(x, y, pendingBedShape)
+      // Keep bed shape selected for placing more
+      return
+    }
 
     if (pendingPlantId) {
       // Place plant on canvas (anywhere!)
@@ -310,7 +323,7 @@ export default function GardenPlanPage() {
   }
 
   const handleBedPointerDown = (e: React.MouseEvent | React.TouchEvent, bed: GardenBed) => {
-    if (pendingPlantId) return // don't start bed drag if placing a plant
+    if (pendingPlantId || pendingBedShape) return // don't start bed/plant drag if placing a plant
     e.stopPropagation()
     const client = 'touches' in e ? e.touches[0] : e
     const { x, y } = canvasXY(client.clientX, client.clientY)
@@ -375,7 +388,7 @@ export default function GardenPlanPage() {
   }
 
   const handleShadePointerDown = (e: React.MouseEvent | React.TouchEvent, shade: ShadeZone) => {
-    if (pendingPlantId) return // don't start shade drag if placing a plant
+    if (pendingPlantId || pendingBedShape) return // don't start shade drag if placing a plant
     e.stopPropagation()
     const client = 'touches' in e ? e.touches[0] : e
     const { x, y } = canvasXY(client.clientX, client.clientY)
@@ -722,6 +735,13 @@ export default function GardenPlanPage() {
         ))}
       </div>
 
+      {pendingBedShape && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-2 text-sm text-garden-dark flex items-center justify-between">
+          <span>📐 <b>{pendingBedShape}</b> — tap anywhere to place</span>
+          <button onClick={() => setPendingBedShape(null)} className="text-red-400 hover:text-red-600 px-2">✕</button>
+        </div>
+      )}
+
       {pendingPlantId && !showVarietyPicker && (
         <div className="bg-garden-green/10 border border-garden-green rounded-xl p-2 text-sm text-garden-dark flex items-center justify-between">
           <span>
@@ -741,6 +761,7 @@ export default function GardenPlanPage() {
             draggable={!isMobile}
             onDragStart={!isMobile ? (e) => handlePaletteDragStart(e, plant) : undefined}
             onClick={() => { 
+              setPendingBedShape(null);
               if (plant.varieties && plant.varieties.length > 0) {
                 setPendingPlantId(plant.id);
                 setShowVarietyPicker(true);
@@ -921,6 +942,23 @@ export default function GardenPlanPage() {
               </div>
             </div>
           </div>
+
+          {/* Pending bed bar */}
+          {pendingBedShape && (
+            <div className="absolute bottom-20 left-0 right-0 z-40 pointer-events-auto">
+              <div className="bg-amber-500 text-white p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📐</span>
+                  <div>
+                    <div className="text-sm font-semibold">Placing: {pendingBedShape} bed</div>
+                    <div className="text-xs text-white/70">Tap anywhere on the grid to place</div>
+                  </div>
+                </div>
+                <button onClick={() => setPendingBedShape(null)}
+                  className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg text-sm font-semibold">✕ Cancel</button>
+              </div>
+            </div>
+          )}
 
           {/* Pending plant bar — bottom, ABOVE everything else */}
           {pendingPlantId && !showVarietyPicker && (
@@ -1300,7 +1338,7 @@ export default function GardenPlanPage() {
                     width: shade.width, height: shade.height,
                     background: shadePattern,
                     borderRadius: '8px',
-                    cursor: pendingPlantId ? 'crosshair' : (dragState?.type === 'shade-move' && dragState.shadeId === shade.id ? 'grabbing' : 'grab'),
+                    cursor: (pendingPlantId || pendingBedShape) ? 'crosshair' : (dragState?.type === 'shade-move' && dragState.shadeId === shade.id ? 'grabbing' : 'grab'),
                     touchAction: 'none',
                   }}
                   onMouseDown={(e) => handleShadePointerDown(e, shade)}
@@ -1383,7 +1421,7 @@ export default function GardenPlanPage() {
                       ? 'linear-gradient(135deg, #C67A4B 0%, #A85D3A 100%)'
                       : 'linear-gradient(135deg, #6B9B4E22 0%, #4A7C2E33 100%)',
                     border: bed.shape === 'raised' ? '3px solid #8B691480' : bed.shape === 'pot' ? '3px solid #8B4513' : '2px solid #4A7C2E40',
-                    cursor: pendingPlantId ? 'crosshair' : (dragState?.type === 'bed-move' && dragState.bedId === bed.id ? 'grabbing' : 'grab'),
+                    cursor: (pendingPlantId || pendingBedShape) ? 'crosshair' : (dragState?.type === 'bed-move' && dragState.bedId === bed.id ? 'grabbing' : 'grab'),
                     touchAction: 'none',
                   }}
                   onClick={(e) => handleBedClick(e, bed)}
