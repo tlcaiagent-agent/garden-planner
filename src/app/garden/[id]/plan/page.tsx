@@ -349,9 +349,14 @@ export default function GardenPlanPage() {
     setSelectedBedId(bedId)
     setSelectedLoosePlantId(null)
     setSelectedShadeId(null)
+    // Convert canvas coords to bed-local coords for rotation-aware dragging
+    const rot = bed.rotation || 0
+    const cx = bed.x + bed.width / 2
+    const cy = bed.y + bed.height / 2
+    const local = rot ? rotatePoint(x, y, cx, cy, rot) : { x, y }
     startDrag({
       type: 'plant-move', plantId: plant.id, bedId,
-      offsetX: x - bed.x - plant.x, offsetY: y - bed.y - plant.y,
+      offsetX: (local.x - bed.x) - plant.x, offsetY: (local.y - bed.y) - plant.y,
     })
   }
 
@@ -472,13 +477,18 @@ export default function GardenPlanPage() {
         ))
       } else if (dragState.type === 'plant-move' && dragState.plantId && dragState.bedId) {
         const bed = beds.find(b => b.id === dragState.bedId)!
+        // Convert canvas coords to bed-local coords (rotation-aware)
+        const rot = bed.rotation || 0
+        const cx = bed.x + bed.width / 2
+        const cy = bed.y + bed.height / 2
+        const local = rot ? rotatePoint(x, y, cx, cy, rot) : { x, y }
         setBeds(prev => prev.map(b =>
           b.id === dragState.bedId
             ? {
               ...b,
               plants: b.plants.map(p =>
                 p.id === dragState.plantId
-                  ? { ...p, x: snap(x - bed.x - dragState.offsetX), y: snap(y - bed.y - dragState.offsetY) }
+                  ? { ...p, x: snap(local.x - bed.x - dragState.offsetX), y: snap(local.y - bed.y - dragState.offsetY) }
                   : p
               ),
             }
