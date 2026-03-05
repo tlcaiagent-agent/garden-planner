@@ -15,7 +15,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 // ── Types ──
-type TaskType = 'planting-window' | 'harvest' | 'fertilize' | 'prune'
+type TaskType = 'planting-window' | 'indoor-window' | 'outdoor-window' | 'harvest' | 'fertilize' | 'prune'
 type Tab = 'today' | 'timeline' | 'log'
 
 interface CalendarTask {
@@ -37,6 +37,8 @@ interface SingleTask {
 
 const taskMeta: Record<TaskType, { color: string; bg: string; text: string; border: string; label: string; emoji: string; barColor: string }> = {
   'planting-window': { color: 'green', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Planting Window', emoji: '🌱', barColor: '#16a34a' },
+  'indoor-window':   { color: 'purple', bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', label: 'Start Indoors', emoji: '🏠', barColor: '#9333ea' },
+  'outdoor-window':  { color: 'green', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Plant Outdoors', emoji: '☀️', barColor: '#16a34a' },
   'harvest':       { color: 'orange', bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  label: 'Harvest',      emoji: '🧺', barColor: '#ea580c' },
   'fertilize':     { color: 'blue',   bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    label: 'Fertilize',    emoji: '💧', barColor: '#2563eb' },
   'prune':         { color: 'blue',   bg: 'bg-sky-50',     text: 'text-sky-700',     border: 'border-sky-200',     label: 'Prune',        emoji: '✂️', barColor: '#0284c7' },
@@ -385,33 +387,41 @@ export default function CalendarPage() {
   // ── Timeline data (per-plant, for swim lanes) ──
   const timelinePlants = useMemo(() => {
     return gardenPlants.map(plant => {
-      const tasks = generateSingleTasks(plant)
       const bars: { type: TaskType; startDay: number; endDay: number; start: Date; end: Date }[] = []
       const yearStart = new Date(YEAR, 0, 1)
-      // Group by type, merge overlapping for cleaner bars
-      const byType = new Map<TaskType, SingleTask[]>()
+
+      // Indoor window (seedIndoors)
+      if (plant.seedIndoors) {
+        const start = addWeeks(LAST_FROST, -plant.seedIndoors[1])
+        const end = addWeeks(LAST_FROST, -plant.seedIndoors[0])
+        bars.push({ type: 'indoor-window', startDay: daysBetween(yearStart, start), endDay: daysBetween(yearStart, end), start, end })
+      }
+
+      // Outdoor window (directSow + transplant merged)
+      const outdoorStarts: Date[] = []
+      const outdoorEnds: Date[] = []
+      if (plant.directSow) {
+        outdoorStarts.push(addWeeks(LAST_FROST, plant.directSow[0]))
+        outdoorEnds.push(addWeeks(LAST_FROST, plant.directSow[1]))
+      }
+      if (plant.transplant) {
+        outdoorStarts.push(addWeeks(LAST_FROST, plant.transplant[0]))
+        outdoorEnds.push(addWeeks(LAST_FROST, plant.transplant[1]))
+      }
+      if (outdoorStarts.length > 0) {
+        const start = new Date(Math.min(...outdoorStarts.map(d => d.getTime())))
+        const end = new Date(Math.max(...outdoorEnds.map(d => d.getTime())))
+        bars.push({ type: 'outdoor-window', startDay: daysBetween(yearStart, start), endDay: daysBetween(yearStart, end), start, end })
+      }
+
+      // Harvest
+      const tasks = generateSingleTasks(plant)
       for (const t of tasks) {
-        if (t.type === 'fertilize' || t.type === 'prune') continue // skip recurring for timeline bars
-        const arr = byType.get(t.type) || []
-        arr.push(t)
-        byType.set(t.type, arr)
-      }
-      for (const [type, typeTasks] of byType) {
-        // merge overlapping
-        const sorted = [...typeTasks].sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
-        let curStart = sorted[0].startDate
-        let curEnd = sorted[0].endDate
-        for (let i = 1; i < sorted.length; i++) {
-          if (sorted[i].startDate <= addDays(curEnd, 1)) {
-            curEnd = sorted[i].endDate > curEnd ? sorted[i].endDate : curEnd
-          } else {
-            bars.push({ type, startDay: daysBetween(yearStart, curStart), endDay: daysBetween(yearStart, curEnd), start: curStart, end: curEnd })
-            curStart = sorted[i].startDate
-            curEnd = sorted[i].endDate
-          }
+        if (t.type === 'harvest') {
+          bars.push({ type: 'harvest', startDay: daysBetween(yearStart, t.startDate), endDay: daysBetween(yearStart, t.endDate), start: t.startDate, end: t.endDate })
         }
-        bars.push({ type, startDay: daysBetween(yearStart, curStart), endDay: daysBetween(yearStart, curEnd), start: curStart, end: curEnd })
       }
+
       return { plant, bars }
     })
   }, [gardenPlants])
@@ -640,7 +650,8 @@ export default function CalendarPage() {
           <div className="space-y-4">
             {/* Legend */}
             <div className="flex flex-wrap gap-3 text-xs text-garden-dark/60">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500" /> Planting Window</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{backgroundColor: '#9333ea'}} /> Start Indoors</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500" /> Plant Outdoors</span>
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500" /> Harvest</span>
               <span className="flex items-center gap-1"><span className="w-0.5 h-3 bg-red-500" /> Today</span>
               <span className="flex items-center gap-1"><span className="w-0.5 h-3 bg-blue-400 border border-dashed" /> Frost dates</span>
