@@ -1345,8 +1345,8 @@ export default function GardenPlanPage() {
               const isSelected = selectedLoosePlantId === plant.id
               return (
                 <div key={plant.id}
-                  className={`absolute flex items-center justify-center rounded-full transition-all select-none
-                    ${isSelected ? 'ring-2 ring-garden-dark scale-110 z-30' : 'hover:scale-105 z-20'}
+                  className={`absolute flex items-center justify-center rounded-full transition-all select-none border
+                    ${isSelected ? 'ring-2 ring-garden-dark scale-110 z-30 border-garden-dark/40' : 'hover:scale-105 z-20 border-garden-dark/15'}
                     bg-white/60 shadow-sm`}
                   style={{
                     left: plant.x, top: plant.y,
@@ -1427,8 +1427,8 @@ export default function GardenPlanPage() {
 
                     return (
                       <div key={plant.id}
-                        className={`absolute flex items-center justify-center rounded-full transition-all select-none
-                          ${selectedPlantId === plant.id ? 'ring-2 ring-garden-dark scale-110 z-20' : 'hover:scale-105'}
+                        className={`absolute flex items-center justify-center rounded-full transition-all select-none border
+                          ${selectedPlantId === plant.id ? 'ring-2 ring-garden-dark scale-110 z-20 border-garden-dark/40' : 'hover:scale-105 border-garden-dark/15'}
                           ${showCompanion && hasEnemy ? 'ring-2 ring-red-400 bg-red-50' : ''}
                           ${showCompanion && hasCompanion ? 'ring-2 ring-green-400 bg-green-50' : ''}`}
                         style={{
