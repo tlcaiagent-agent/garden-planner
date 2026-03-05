@@ -391,13 +391,7 @@ export default function CalendarPage() {
       const yearStart = new Date(YEAR, 0, 1)
 
       // Indoor window (seedIndoors)
-      if (plant.seedIndoors) {
-        const start = addWeeks(LAST_FROST, -plant.seedIndoors[1])
-        const end = addWeeks(LAST_FROST, -plant.seedIndoors[0])
-        bars.push({ type: 'indoor-window', startDay: daysBetween(yearStart, start), endDay: daysBetween(yearStart, end), start, end })
-      }
-
-      // Outdoor window (directSow + transplant merged)
+      // Outdoor window (directSow + transplant merged) — compute first so indoor can extend to it
       const outdoorStarts: Date[] = []
       const outdoorEnds: Date[] = []
       if (plant.directSow) {
@@ -408,10 +402,17 @@ export default function CalendarPage() {
         outdoorStarts.push(addWeeks(LAST_FROST, plant.transplant[0]))
         outdoorEnds.push(addWeeks(LAST_FROST, plant.transplant[1]))
       }
-      if (outdoorStarts.length > 0) {
-        const start = new Date(Math.min(...outdoorStarts.map(d => d.getTime())))
-        const end = new Date(Math.max(...outdoorEnds.map(d => d.getTime())))
-        bars.push({ type: 'outdoor-window', startDay: daysBetween(yearStart, start), endDay: daysBetween(yearStart, end), start, end })
+      const outdoorStart = outdoorStarts.length > 0 ? new Date(Math.min(...outdoorStarts.map(d => d.getTime()))) : null
+      const outdoorEnd = outdoorEnds.length > 0 ? new Date(Math.max(...outdoorEnds.map(d => d.getTime()))) : null
+      if (outdoorStart && outdoorEnd) {
+        bars.push({ type: 'outdoor-window', startDay: daysBetween(yearStart, outdoorStart), endDay: daysBetween(yearStart, outdoorEnd), start: outdoorStart, end: outdoorEnd })
+      }
+
+      // Indoor window — extends from seedIndoors start all the way to outdoor start
+      if (plant.seedIndoors) {
+        const start = addWeeks(LAST_FROST, -plant.seedIndoors[1])
+        const end = outdoorStart || addWeeks(LAST_FROST, -plant.seedIndoors[0])
+        bars.push({ type: 'indoor-window', startDay: daysBetween(yearStart, start), endDay: daysBetween(yearStart, end), start, end })
       }
 
       // Harvest
